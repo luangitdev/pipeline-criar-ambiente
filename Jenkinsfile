@@ -344,33 +344,37 @@ ENDVERIFY
                 """
                 
                 // Limpar diretório temporário no bastion
-                withCredentials([
-                    string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
-                    string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
-                    sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
-                ]) {
-                    sh """
-                        # Criar script temporário para ssh-add
-                        cat > /tmp/ssh-add-script-\$\$.sh << 'EOF'
+                try {
+                    withCredentials([
+                        string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
+                        string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
+                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
+                    ]) {
+                        sh """
+                            # Criar script temporário para ssh-add
+                            cat > /tmp/ssh-add-script-\$\$.sh << 'EOF'
 #!/bin/bash
 echo "\$SSH_PASSPHRASE"
 EOF
-                        chmod +x /tmp/ssh-add-script-\$\$.sh
-                        
-                        # Configurar ssh-agent temporário
-                        eval \$(ssh-agent -s)
-                        
-                        # Adicionar chave com passphrase
-                        DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
-                        
-                        # Limpar diretório no bastion
-                        ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "rm -rf /tmp/pipeline-${BUILD_NUMBER}" || true
-                        
-                        # Limpar
-                        ssh-agent -k
-                        rm -f /tmp/ssh-add-script-\$\$.sh
-                    """ 
-                } || true
+                            chmod +x /tmp/ssh-add-script-\$\$.sh
+                            
+                            # Configurar ssh-agent temporário
+                            eval \$(ssh-agent -s)
+                            
+                            # Adicionar chave com passphrase
+                            DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
+                            
+                            # Limpar diretório no bastion
+                            ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "rm -rf /tmp/pipeline-${BUILD_NUMBER}"
+                            
+                            # Limpar
+                            ssh-agent -k
+                            rm -f /tmp/ssh-add-script-\$\$.sh
+                        """
+                    }
+                } catch (Exception e) {
+                    echo "⚠️ Erro na limpeza do bastion: ${e.getMessage()}"
+                }
             }
         }
         
