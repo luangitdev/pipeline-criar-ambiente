@@ -187,12 +187,13 @@ ENDCREATE
                             """,
                             returnStatus: true
                         )
-                    
-                    if (createResult != 0) {
-                        error("❌ Falha na criação do banco de dados!")
+                        
+                        if (createResult != 0) {
+                            error("❌ Falha na criação do banco de dados!")
+                        }
+                        
+                        echo "✅ Banco de dados ${params.NOME_BANCO} criado com sucesso!"
                     }
-                    
-                    echo "✅ Banco de dados ${params.NOME_BANCO} criado com sucesso!"
                 }
             }
         }
