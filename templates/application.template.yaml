@@ -1,0 +1,35 @@
+# Template de configuração da aplicação
+# Este arquivo pode ser customizado para diferentes ambientes
+
+# Configurações de Banco de Dados
+database:
+  host: "{{DB_HOST}}"
+  port: 5432
+  name: "{{NOME_BANCO}}"
+  username: "{{DB_USER}}"
+  password: "{{DB_PASSWORD}}"
+  
+# Configurações da Aplicação
+application:
+  name: "{{NOME_BANCO}}"
+  environment: "{{TIPO_AMBIENTE}}"
+  server: "{{SERVIDOR}}"
+  
+# Configurações de Logging
+logging:
+  level: "INFO"
+  file: "logs/application.log"
+  max-size: "100MB"
+  max-history: 30
+  
+# Configurações do Servidor
+server:
+  port: 8080
+  context-path: "/{{NOME_BANCO}}"
+  
+# Configurações JVM
+jvm:
+  initial-memory: "512m"
+  max-memory: "2g"
+  gc-options: "-XX:+UseG1GC"
+  encoding: "UTF-8"

@@ -1,0 +1,403 @@
+pipeline {
+    agent any
+    
+    parameters {
+        choice(
+            name: 'TIPO_AMBIENTE',
+            choices: ['ptf', 'pln'],
+            description: 'Tipo do ambiente (PTF ou PLN)'
+        )
+        choice(
+            name: 'SERVIDOR',
+            choices: ['gcp01', 'gcp02', 'local01'],
+            description: 'Servidor de destino'
+        )
+        string(
+            name: 'NOME_BANCO',
+            defaultValue: '',
+            description: 'Nome do banco de dados a ser criado',
+            trim: true
+        )
+        string(
+            name: 'VERSAO_DESEJADA',
+            defaultValue: '15.13.1.0-1',
+            description: 'Versão desejada do banco (ex: 15.13.1.0-1)',
+            trim: true
+        )
+        string(
+            name: 'WAR_FILE_PATH',
+            defaultValue: '',
+            description: 'Caminho para o arquivo .war (opcional)',
+            trim: true
+        )
+        string(
+            name: 'DEPLOY_PATH',
+            defaultValue: '/opt/applications',
+            description: 'Caminho base para deploy da aplicação',
+            trim: true
+        )
+        booleanParam(
+            name: 'CRIAR_BANCO',
+            defaultValue: true,
+            description: 'Executar criação do banco de dados'
+        )
+        booleanParam(
+            name: 'DEPLOY_APP',
+            defaultValue: false,
+            description: 'Executar deploy da aplicação'
+        )
+    }
+    
+    environment {
+        PIPELINE_HOME = "${WORKSPACE}"
+        SCRIPTS_PATH = "${WORKSPACE}/scripts"
+        CONFIG_PATH = "${WORKSPACE}/config"
+        SQL_PATH = "${WORKSPACE}/sql"
+        DADOS_PATH = "${WORKSPACE}/dados"
+        TEMPLATES_PATH = "${WORKSPACE}/templates"
+        
+        // Configurações por ambiente
+        DB_PORT = '5432'
+        
+        // Log level
+        LOG_LEVEL = 'INFO'
+    }
+    
+    stages {
+        stage('🔍 Validação de Parâmetros') {
+            steps {
+                script {
+                    echo "🚀 ===== PIPELINE CRIAR AMBIENTE ====="
+                    echo "📋 Parâmetros recebidos:"
+                    echo "   - Tipo Ambiente: ${params.TIPO_AMBIENTE}"
+                    echo "   - Servidor: ${params.SERVIDOR}"
+                    echo "   - Nome Banco: ${params.NOME_BANCO}"
+                    echo "   - Versão: ${params.VERSAO_DESEJADA}"
+                    echo "   - Criar Banco: ${params.CRIAR_BANCO}"
+                    echo "   - Deploy App: ${params.DEPLOY_APP}"
+                    echo "======================================="
+                    
+                    // Validações básicas
+                    if (!params.NOME_BANCO || params.NOME_BANCO.trim() == '') {
+                        error("❌ Nome do banco é obrigatório!")
+                    }
+                    
+                    if (!params.VERSAO_DESEJADA || params.VERSAO_DESEJADA.trim() == '') {
+                        error("❌ Versão desejada é obrigatória!")
+                    }
+                    
+                    if (params.DEPLOY_APP && (!params.WAR_FILE_PATH || params.WAR_FILE_PATH.trim() == '')) {
+                        error("❌ Caminho do arquivo .war é obrigatório quando deploy está habilitado!")
+                    }
+                    
+                    // Carregar configurações
+                    env.DB_HOST = sh(
+                        script: "${SCRIPTS_PATH}/get_db_host.sh ${params.SERVIDOR}",
+                        returnStdout: true
+                    ).trim()
+                    
+                    echo "✅ Validação concluída. DB Host: ${env.DB_HOST}"
+                }
+            }
+        }
+        
+        stage('📁 Preparação do Ambiente') {
+            steps {
+                script {
+                    echo "🔧 Preparando ambiente de trabalho..."
+                    
+                    // Criar diretórios temporários
+                    sh """
+                        mkdir -p ${WORKSPACE}/temp
+                        mkdir -p ${WORKSPACE}/logs
+                        chmod +x ${SCRIPTS_PATH}/*.sh
+                    """
+                    
+                    // Copiar dados específicos do ambiente
+                    sh """
+                        if [ -f "${DADOS_PATH}/${params.TIPO_AMBIENTE}/dados.txt" ]; then
+                            cp "${DADOS_PATH}/${params.TIPO_AMBIENTE}/dados.txt" ${WORKSPACE}/temp/
+                            echo "✅ Dados do ambiente ${params.TIPO_AMBIENTE} copiados"
+                        else
+                            echo "⚠️ Arquivo de dados não encontrado para ${params.TIPO_AMBIENTE}"
+                        fi
+                    """
+                }
+            }
+        }
+        
+        stage('🗄️ Criação do Banco de Dados') {
+            when {
+                expression { params.CRIAR_BANCO }
+            }
+            steps {
+                script {
+                    echo "🗄️ Iniciando criação do banco de dados..."
+                    
+                    withCredentials([
+                        string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
+                        string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
+                        string(credentialsId: 'db-pathfind-user', variable: 'DB_USER'),
+                        string(credentialsId: 'db-pathfind-password', variable: 'DB_PASSWORD'),
+                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
+                    ]) {
+                        def createResult = sh(
+                            script: """
+                                # Criar script temporário para ssh-add
+                                cat > /tmp/ssh-add-script-\$\$.sh << 'EOF'
+#!/bin/bash
+echo "\$SSH_PASSPHRASE"
+EOF
+                                chmod +x /tmp/ssh-add-script-\$\$.sh
+                                
+                                # Configurar ssh-agent temporário
+                                eval \$(ssh-agent -s)
+                                
+                                # Adicionar chave com passphrase
+                                DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
+                                
+                                # Copiar arquivos necessários
+                                scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
+                                scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/sql/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
+                                scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/dados/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
+                                
+                                # Executar scripts no bastion
+                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDCREATE'
+cd /tmp/pipeline-${BUILD_NUMBER}
+chmod +x scripts/*.sh
+
+# Executar criação do banco
+./scripts/create_database.sh \\
+    --tipo-ambiente "${params.TIPO_AMBIENTE}" \\
+    --servidor "${params.SERVIDOR}" \\
+    --nome-banco "${params.NOME_BANCO}" \\
+    --versao-desejada "${params.VERSAO_DESEJADA}" \\
+    --db-host "${env.DB_HOST}" \\
+    --db-port "${env.DB_PORT}" \\
+    --db-user "${DB_USER}" \\
+    --db-password "${DB_PASSWORD}" \\
+    --workspace "/tmp/pipeline-${BUILD_NUMBER}"
+
+echo "✅ Criação do banco concluída!"
+ENDCREATE
+                                
+                                # Limpar
+                                ssh-agent -k
+                                rm -f /tmp/ssh-add-script-\$\$.sh
+                            """,
+                            returnStatus: true
+                        )
+                    
+                    if (createResult != 0) {
+                        error("❌ Falha na criação do banco de dados!")
+                    }
+                    
+                    echo "✅ Banco de dados ${params.NOME_BANCO} criado com sucesso!"
+                }
+            }
+        }
+        
+        stage('🚀 Deploy da Aplicação') {
+            when {
+                expression { params.DEPLOY_APP }
+            }
+            steps {
+                script {
+                    echo "🚀 Iniciando deploy da aplicação..."
+                    
+                    withCredentials([
+                        string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
+                        string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
+                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
+                    ]) {
+                        def deployResult = sh(
+                            script: """
+                                # Criar script temporário para ssh-add
+                                cat > /tmp/ssh-add-script-\$\$.sh << 'EOF'
+#!/bin/bash
+echo "\$SSH_PASSPHRASE"
+EOF
+                                chmod +x /tmp/ssh-add-script-\$\$.sh
+                                
+                                # Configurar ssh-agent temporário
+                                eval \$(ssh-agent -s)
+                                
+                                # Adicionar chave com passphrase
+                                DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
+                                
+                                # Copiar WAR file se necessário
+                                if [ ! -z "${params.WAR_FILE_PATH}" ]; then
+                                    scp -o StrictHostKeyChecking=no "${params.WAR_FILE_PATH}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
+                                fi
+                                
+                                # Executar deploy no bastion
+                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDDEPLOY'
+cd /tmp/pipeline-${BUILD_NUMBER}
+
+# Executar deploy da aplicação
+./scripts/deploy_application.sh \\
+    --war-file "/tmp/pipeline-${BUILD_NUMBER}/$(basename ${params.WAR_FILE_PATH})" \\
+    --deploy-path "${params.DEPLOY_PATH}" \\
+    --nome-banco "${params.NOME_BANCO}" \\
+    --tipo-ambiente "${params.TIPO_AMBIENTE}" \\
+    --servidor "${params.SERVIDOR}" \\
+    --workspace "/tmp/pipeline-${BUILD_NUMBER}"
+
+echo "✅ Deploy da aplicação concluído!"
+ENDDEPLOY
+                                
+                                # Limpar
+                                ssh-agent -k
+                                rm -f /tmp/ssh-add-script-\$\$.sh
+                            """,
+                            returnStatus: true
+                        )
+                        
+                        if (deployResult != 0) {
+                            error("❌ Falha no deploy da aplicação!")
+                        }
+                        
+                        echo "✅ Deploy da aplicação concluído com sucesso!"
+                    }
+                }
+            }
+        }
+        
+        stage('✅ Verificação Final') {
+            steps {
+                script {
+                    echo "🔍 Executando verificações finais..."
+                    
+                    withCredentials([
+                        string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
+                        string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
+                        string(credentialsId: 'db-pathfind-user', variable: 'DB_USER'),
+                        string(credentialsId: 'db-pathfind-password', variable: 'DB_PASSWORD'),
+                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
+                    ]) {
+                        sh """
+                            # Criar script temporário para ssh-add
+                            cat > /tmp/ssh-add-script-\$\$.sh << 'EOF'
+#!/bin/bash
+echo "\$SSH_PASSPHRASE"
+EOF
+                            chmod +x /tmp/ssh-add-script-\$\$.sh
+                            
+                            # Configurar ssh-agent temporário
+                            eval \$(ssh-agent -s)
+                            
+                            # Adicionar chave com passphrase
+                            DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
+                            
+                            # Executar verificações no bastion
+                            ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDVERIFY'
+cd /tmp/pipeline-${BUILD_NUMBER}
+
+echo "🔍 Executando verificações..."
+
+# Verificar banco se foi criado
+if [ "${params.CRIAR_BANCO}" = "true" ]; then
+    ./scripts/verify_database.sh \\
+        --nome-banco "${params.NOME_BANCO}" \\
+        --db-host "${env.DB_HOST}" \\
+        --db-port "${env.DB_PORT}" \\
+        --db-user "${DB_USER}" \\
+        --db-password "${DB_PASSWORD}"
+fi
+
+# Verificar deploy se foi executado
+if [ "${params.DEPLOY_APP}" = "true" ]; then
+    ./scripts/verify_deployment.sh \\
+        --deploy-path "${params.DEPLOY_PATH}" \\
+        --nome-banco "${params.NOME_BANCO}"
+fi
+
+echo "✅ Todas as verificações concluídas!"
+ENDVERIFY
+                            
+                            # Limpar
+                            ssh-agent -k
+                            rm -f /tmp/ssh-add-script-\$\$.sh
+                        """
+                    }
+                    
+                    echo "✅ Todas as verificações foram concluídas com sucesso!"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                echo "🧹 Executando limpeza..."
+                
+                // Arquivar logs
+                if (fileExists("${WORKSPACE}/logs")) {
+                    archiveArtifacts artifacts: 'logs/**/*', allowEmptyArchive: true
+                }
+                
+                // Limpar arquivos temporários sensíveis
+                sh """
+                    rm -rf ${WORKSPACE}/temp
+                    find ${WORKSPACE} -name "*.tmp" -delete 2>/dev/null || true
+                """
+                
+                // Limpar diretório temporário no bastion
+                withCredentials([
+                    string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
+                    string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
+                    sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
+                ]) {
+                    sh """
+                        # Criar script temporário para ssh-add
+                        cat > /tmp/ssh-add-script-\$\$.sh << 'EOF'
+#!/bin/bash
+echo "\$SSH_PASSPHRASE"
+EOF
+                        chmod +x /tmp/ssh-add-script-\$\$.sh
+                        
+                        # Configurar ssh-agent temporário
+                        eval \$(ssh-agent -s)
+                        
+                        # Adicionar chave com passphrase
+                        DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
+                        
+                        # Limpar diretório no bastion
+                        ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "rm -rf /tmp/pipeline-${BUILD_NUMBER}" || true
+                        
+                        # Limpar
+                        ssh-agent -k
+                        rm -f /tmp/ssh-add-script-\$\$.sh
+                    """ 
+                } || true
+            }
+        }
+        
+        success {
+            echo """
+🎉 ===== PIPELINE CONCLUÍDO COM SUCESSO! =====
+📋 Resumo:
+   - Ambiente: ${params.TIPO_AMBIENTE}
+   - Servidor: ${params.SERVIDOR}
+   - Banco: ${params.NOME_BANCO}
+   - Versão: ${params.VERSAO_DESEJADA}
+   - Criou Banco: ${params.CRIAR_BANCO ? 'Sim' : 'Não'}
+   - Deploy App: ${params.DEPLOY_APP ? 'Sim' : 'Não'}
+=============================================
+            """
+        }
+        
+        failure {
+            echo """
+❌ ===== PIPELINE FALHOU! =====
+📋 Verifique os logs para mais detalhes.
+Parâmetros utilizados:
+   - Ambiente: ${params.TIPO_AMBIENTE}
+   - Servidor: ${params.SERVIDOR}
+   - Banco: ${params.NOME_BANCO}
+==============================
+            """
+        }
+    }
+}
