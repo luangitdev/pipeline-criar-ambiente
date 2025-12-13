@@ -156,6 +156,9 @@ EOF
                                 # Adicionar chave com passphrase
                                 DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
                                 
+                                # Criar diretório no bastion
+                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
+                                
                                 # Copiar arquivos necessários
                                 scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
                                 scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/sql/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
@@ -225,6 +228,9 @@ EOF
                                 
                                 # Adicionar chave com passphrase
                                 DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
+                                
+                                # Criar diretório no bastion se não existe
+                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
                                 
                                 # Copiar WAR file se necessário
                                 if [ ! -z "${params.WAR_FILE_PATH}" ]; then
