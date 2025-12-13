@@ -236,7 +236,7 @@ cd /tmp/pipeline-${BUILD_NUMBER}
 
 # Executar deploy da aplicação
 ./scripts/deploy_application.sh \\
-    --war-file "/tmp/pipeline-${BUILD_NUMBER}/$(basename ${params.WAR_FILE_PATH})" \\
+    --war-file "/tmp/pipeline-${BUILD_NUMBER}/\$(basename ${params.WAR_FILE_PATH})" \\
     --deploy-path "${params.DEPLOY_PATH}" \\
     --nome-banco "${params.NOME_BANCO}" \\
     --tipo-ambiente "${params.TIPO_AMBIENTE}" \\
