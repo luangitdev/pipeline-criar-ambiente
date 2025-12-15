@@ -173,14 +173,23 @@ log_success "PostgreSQL client encontrado: $(which psql)"
 
 # 2. Testar conexão com o banco antes de prosseguir
 log "🔍 Testando conexão com o servidor de banco..."
+log "🔧 Comando: psql -h $EFFECTIVE_HOST -p $EFFECTIVE_PORT -U $DB_USER -d $TEMPLATE_DB -c \"SELECT 1;\""
+
 # Usar template database para teste pois usuário pode não ter acesso ao 'postgres'
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
-    log_error "Falha ao conectar com o servidor PostgreSQL em $EFFECTIVE_HOST:$EFFECTIVE_PORT (original: $DB_HOST:$DB_PORT)"
+# Capturar erro específico
+PSQL_ERROR=$(PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" 2>&1)
+PSQL_EXIT_CODE=$?
+
+if [ $PSQL_EXIT_CODE -ne 0 ]; then
+    log_error "Falha ao conectar com o servidor PostgreSQL em $EFFECTIVE_HOST:$EFFECTIVE_PORT"
+    log_error "Erro específico: $PSQL_ERROR"
+    log_error ""
     log_error "Verifique se:"
     log_error "  1. O servidor PostgreSQL está rodando"
     log_error "  2. O bastion host tem acesso à rede privada"
-    log_error "  3. As credenciais estão corretas"
+    log_error "  3. As credenciais estão corretas (usuário: $DB_USER)"
     log_error "  4. A porta $EFFECTIVE_PORT está aberta"
+    log_error "  5. O template '$TEMPLATE_DB' existe"
     
     # Limpar tunnel se criado
     if [[ -n "${TUNNEL_PID:-}" ]]; then
