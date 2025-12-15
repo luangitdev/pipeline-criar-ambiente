@@ -386,8 +386,8 @@ if [[ -d "$UPDATES_DIR" ]]; then
             
             # Verificar se update deve ser aplicado usando comparação numérica de versões
             # Condição: versão do update > versão atual E versão do update <= versão desejada
-            local comp_atual=$(compare_versions "$update_version" "$VERSAO_ATUAL")
-            local comp_desejada=$(compare_versions "$update_version" "$VERSAO_DESEJADA")
+            comp_atual=$(compare_versions "$update_version" "$VERSAO_ATUAL")
+            comp_desejada=$(compare_versions "$update_version" "$VERSAO_DESEJADA")
             
             # update_version > VERSAO_ATUAL AND update_version <= VERSAO_DESEJADA
             if [[ "$comp_atual" == "1" ]] && [[ "$comp_desejada" == "-1" || "$comp_desejada" == "0" ]]; then
