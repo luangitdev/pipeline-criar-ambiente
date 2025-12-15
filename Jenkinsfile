@@ -9,7 +9,7 @@ pipeline {
         )
         choice(
             name: 'SERVIDOR',
-            choices: ['gcp01', 'gcp02', 'local01'],
+            choices: ['gcp01', 'gcp02', 'gcp03', 'gcp-pln'],
             description: 'Servidor de destino'
         )
         string(
