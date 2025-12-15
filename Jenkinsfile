@@ -46,6 +46,28 @@ pipeline {
             defaultValue: false,
             description: 'Executar deploy da aplicação'
         )
+        text(
+            name: 'DADOS_AMBIENTE',
+            defaultValue: '''Endereço: Rua Capitão Luis Ramos, 200
+Bairro: Vila Guilherme
+Cidade: São Paulo
+Estado: SP
+CEP: 02066-010
+Lat: -23.507212290544405
+Long: -46.607500704611475
+CNPJ: 09645368000181
+Razao Social: AGEBRANDS''',
+            description: '''Dados do ambiente no formato:
+Endereço: <endereço>
+Bairro: <bairro>
+Cidade: <cidade>
+Estado: <sigla do estado>
+CEP: <cep>
+Lat: <latitude>
+Long: <longitude>
+CNPJ: <cnpj>
+Razao Social: <razão social>'''
+        )
     }
     
     environment {
@@ -113,15 +135,25 @@ pipeline {
                         chmod +x ${SCRIPTS_PATH}/*.sh
                     """
                     
-                    // Copiar dados específicos do ambiente
-                    sh """
-                        if [ -f "${DADOS_PATH}/${params.TIPO_AMBIENTE}/dados.txt" ]; then
-                            cp "${DADOS_PATH}/${params.TIPO_AMBIENTE}/dados.txt" ${WORKSPACE}/temp/
-                            echo "✅ Dados do ambiente ${params.TIPO_AMBIENTE} copiados"
-                        else
-                            echo "⚠️ Arquivo de dados não encontrado para ${params.TIPO_AMBIENTE}"
-                        fi
-                    """
+                    // Criar arquivo dados.txt a partir do parâmetro ou usar arquivo padrão
+                    if (params.DADOS_AMBIENTE && params.DADOS_AMBIENTE.trim() != '') {
+                        // Usar dados fornecidos como parâmetro
+                        writeFile file: "${WORKSPACE}/temp/dados.txt", text: params.DADOS_AMBIENTE
+                        echo "✅ Dados do ambiente criados a partir do parâmetro"
+                        echo "📄 Conteúdo:"
+                        sh "cat ${WORKSPACE}/temp/dados.txt"
+                    } else {
+                        // Usar arquivo padrão se nenhum dado foi fornecido
+                        sh """
+                            if [ -f "${DADOS_PATH}/${params.TIPO_AMBIENTE}/dados.txt" ]; then
+                                cp "${DADOS_PATH}/${params.TIPO_AMBIENTE}/dados.txt" ${WORKSPACE}/temp/
+                                echo "✅ Dados do ambiente ${params.TIPO_AMBIENTE} copiados do arquivo padrão"
+                            else
+                                echo "❌ Nenhum dado fornecido e arquivo padrão não encontrado!"
+                                exit 1
+                            fi
+                        """
+                    }
                 }
             }
         }

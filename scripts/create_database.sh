@@ -276,13 +276,24 @@ fi
 
 # 2. Processar dados do ambiente
 log "📋 Processando dados do ambiente..."
-DADOS_FILE="$WORKSPACE/dados/$TIPO_AMBIENTE/dados.txt"
-if [[ -f "$DADOS_FILE" ]]; then
-    # Gerar start.sql personalizado
-    "$WORKSPACE/scripts/generate_start_sql.sh" "$DADOS_FILE" "$TIPO_AMBIENTE" "$WORKSPACE/temp"
+# Priorizar arquivo temporário criado pelo Jenkins (parâmetro)
+DADOS_FILE_TEMP="$WORKSPACE/temp/dados.txt"
+DADOS_FILE_DEFAULT="$WORKSPACE/dados/$TIPO_AMBIENTE/dados.txt"
+
+if [[ -f "$DADOS_FILE_TEMP" ]]; then
+    log "📄 Usando dados fornecidos como parâmetro"
+    DADOS_FILE="$DADOS_FILE_TEMP"
+elif [[ -f "$DADOS_FILE_DEFAULT" ]]; then
+    log "📄 Usando arquivo padrão do ambiente"  
+    DADOS_FILE="$DADOS_FILE_DEFAULT"
 else
-    log_warning "Arquivo de dados não encontrado: $DADOS_FILE"
+    log_error "❌ Nenhum arquivo de dados encontrado!"
+    log_error "   Esperado: $DADOS_FILE_TEMP ou $DADOS_FILE_DEFAULT"
+    exit 1
 fi
+
+# Gerar start.sql personalizado
+"$WORKSPACE/scripts/generate_start_sql.sh" "$DADOS_FILE" "$TIPO_AMBIENTE" "$WORKSPACE/temp"
 
 # 3. Executar configuração inicial (start.sql)
 START_SQL="$WORKSPACE/temp/start_${TIPO_AMBIENTE}.sql"
