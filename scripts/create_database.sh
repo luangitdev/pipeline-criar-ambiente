@@ -146,7 +146,13 @@ execute_sql_file() {
 EFFECTIVE_HOST="$DB_HOST"
 EFFECTIVE_PORT="$DB_PORT"
 
-log "🔗 Configuração de conexão: $EFFECTIVE_HOST:$EFFECTIVE_PORT"
+# Template sempre centralizado no GCP01
+TEMPLATE_HOST="10.200.0.19"
+TEMPLATE_PORT="5432"
+
+log "🔗 Configuração de conexão:"
+log "   - Servidor destino: $EFFECTIVE_HOST:$EFFECTIVE_PORT" 
+log "   - Template source: $TEMPLATE_HOST:$TEMPLATE_PORT (GCP01)"
 
 # 1. Testar conexão com o banco antes de prosseguir
 log "🔍 Testando conexão com o servidor de banco..."
@@ -162,30 +168,55 @@ if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U
 fi
 log_success "Conexão com o servidor estabelecida com sucesso!"
 
-# 2. Verificar se template existe (obrigatório)
-log "🔍 Verificando se template existe: $TEMPLATE_DB"
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$TEMPLATE_DB"; then
-    log_error "❌ Template '$TEMPLATE_DB' não encontrado no servidor $EFFECTIVE_HOST:$EFFECTIVE_PORT"
-    log_error "📋 Bancos disponíveis no servidor:"
-    PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -v "^$" | sort | head -20
-    log_error "💡 Certifique-se de que o template '$TEMPLATE_DB' existe no servidor de destino"
+# 2. Verificar se template existe no servidor centralizado (GCP01)
+log "🔍 Verificando se template existe no GCP01: $TEMPLATE_DB"
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$TEMPLATE_DB"; then
+    log_error "❌ Template '$TEMPLATE_DB' não encontrado no servidor centralizado $TEMPLATE_HOST:$TEMPLATE_PORT (GCP01)"
+    log_error "📋 Bancos disponíveis no GCP01:"
+    PGPASSWORD="$DB_PASSWORD" psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -v "^$" | sort | head -20
+    log_error "💡 Certifique-se de que o template '$TEMPLATE_DB' existe no GCP01"
     exit 1
 fi
-log_success "Template $TEMPLATE_DB encontrado!"
+log_success "Template $TEMPLATE_DB encontrado no GCP01!"
 
-# 3. Criar banco de dados com template
-log "🗄️ Criando banco com template: $TEMPLATE_DB"
-if execute_sql "CREATE DATABASE \"$NOME_BANCO\" WITH TEMPLATE \"$TEMPLATE_DB\";" 2>/dev/null; then
-    log_success "Banco $NOME_BANCO criado com sucesso!"
+# 3. Criar banco de dados copiando template do GCP01
+log "🗄️ Criando banco $NOME_BANCO no servidor de destino..."
+
+# Primeiro verificar se o banco já existe no destino
+if PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
+    log_warning "Banco $NOME_BANCO já existe no servidor de destino, continuando..."
 else
-    # Verificar se o banco já existe
-    if PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
-        log_warning "Banco $NOME_BANCO já existe, continuando..."
-    else
-        log_error "Falha ao criar o banco $NOME_BANCO"
-        log_error "Verifique se o usuário tem permissões para criar bancos"
+    # Criar banco vazio no destino
+    log "📄 Criando banco vazio no destino..."
+    if ! execute_sql "CREATE DATABASE \"$NOME_BANCO\";" 2>/dev/null; then
+        log_error "Falha ao criar banco vazio $NOME_BANCO no servidor de destino"
         exit 1
     fi
+    log_success "Banco vazio criado no destino!"
+    
+    # Copiar dados do template via pg_dump/pg_restore
+    log "📋 Copiando dados do template $TEMPLATE_DB (GCP01 → destino)..."
+    DUMP_FILE="/tmp/template_dump_$$.sql"
+    
+    # Fazer dump do template no GCP01
+    log "📤 Fazendo dump do template..."
+    if ! PGPASSWORD="$DB_PASSWORD" pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
+        log_error "Falha ao fazer dump do template $TEMPLATE_DB"
+        rm -f "$DUMP_FILE"
+        exit 1
+    fi
+    
+    # Restaurar no banco de destino
+    log "📥 Restaurando dados no banco de destino..."
+    if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" < "$DUMP_FILE"; then
+        log_error "Falha ao restaurar dados no banco $NOME_BANCO"
+        rm -f "$DUMP_FILE"
+        exit 1
+    fi
+    
+    # Limpar arquivo temporário
+    rm -f "$DUMP_FILE"
+    log_success "Banco $NOME_BANCO criado com dados do template!"
 fi
 
 # 2. Processar dados do ambiente
