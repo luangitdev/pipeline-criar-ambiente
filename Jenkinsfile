@@ -180,13 +180,6 @@ echo "DB_PORT: ${env.DB_PORT}"
 echo "DB_USER: ${DB_USER}"
 echo "DB_PASSWORD: [MASKED]"
 echo "WORKSPACE: /tmp/pipeline-${BUILD_NUMBER}"
-echo ""
-echo "=== DEBUG CREDENCIAIS ==="
-echo "DB_USER vazio? \$([ -z '${DB_USER}' ] && echo 'SIM - PROBLEMA!' || echo 'NÃO - OK')"
-echo "DB_PASSWORD vazio? \$([ -z '${DB_PASSWORD}' ] && echo 'SIM - PROBLEMA!' || echo 'NÃO - OK')"
-echo "Tamanho DB_USER: \${#DB_USER}"
-echo "Tamanho DB_PASSWORD: \${#DB_PASSWORD}"
-echo "========================="
 echo "================================="
 
 # Executar criação do banco
