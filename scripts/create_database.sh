@@ -171,13 +171,19 @@ EFFECTIVE_PORT="$DB_PORT"
 # Inicializar variável de túnel SSH (mesmo que não usado)
 TUNNEL_PID=""
 
-# Template sempre centralizado no GCP01
-TEMPLATE_HOST="10.200.0.19"
+# Template baseado no tipo de ambiente
+if [[ "$TIPO_AMBIENTE" == "pln" ]]; then
+    TEMPLATE_HOST="10.200.0.3"    # GCP-PLN
+    TEMPLATE_SERVER_NAME="GCP-PLN"
+else
+    TEMPLATE_HOST="10.200.0.19"   # GCP01 (PTF padrão)
+    TEMPLATE_SERVER_NAME="GCP01"
+fi
 TEMPLATE_PORT="5432"
 
 log "🔗 Configuração de conexão:"
 log "   - Servidor destino: $EFFECTIVE_HOST:$EFFECTIVE_PORT" 
-log "   - Template source: $TEMPLATE_HOST:$TEMPLATE_PORT (GCP01)"
+log "   - Template source: $TEMPLATE_HOST:$TEMPLATE_PORT ($TEMPLATE_SERVER_NAME)"
 
 # 1. Verificar ambiente e ferramentas
 log "🔧 Verificando ambiente de execução..."
@@ -221,17 +227,17 @@ if [ $PSQL_EXIT_CODE -ne 0 ]; then
 fi
 log_success "Conexão com o servidor estabelecida com sucesso!"
 
-# 2. Verificar se template existe no servidor centralizado (GCP01)
-log "🔍 Verificando se template existe no GCP01: $TEMPLATE_DB"
+# 2. Verificar se template existe no servidor de template
+log "🔍 Verificando se template existe no $TEMPLATE_SERVER_NAME: $TEMPLATE_DB"
 # Conectar no próprio template para verificar se existe e se temos acesso
 if ! run_psql_safe psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
-    log_error "❌ Template '$TEMPLATE_DB' não encontrado ou sem acesso no servidor $TEMPLATE_HOST:$TEMPLATE_PORT (GCP01)"
+    log_error "❌ Template '$TEMPLATE_DB' não encontrado ou sem acesso no servidor $TEMPLATE_HOST:$TEMPLATE_PORT ($TEMPLATE_SERVER_NAME)"
     log_error "💡 Verifique se:"
-    log_error "   - O template '$TEMPLATE_DB' existe no GCP01"
+    log_error "   - O template '$TEMPLATE_DB' existe no $TEMPLATE_SERVER_NAME"
     log_error "   - O usuário '$DB_USER' tem acesso ao template"
     exit 1
 fi
-log_success "Template $TEMPLATE_DB encontrado no GCP01!"
+log_success "Template $TEMPLATE_DB encontrado no $TEMPLATE_SERVER_NAME!"
 
 # 3. Criar banco de dados copiando template do GCP01
 log "🗄️ Criando banco $NOME_BANCO no servidor de destino..."
@@ -250,10 +256,10 @@ else
     log_success "Banco vazio criado no destino!"
     
     # Copiar dados do template via pg_dump/pg_restore
-    log "📋 Copiando dados do template $TEMPLATE_DB (GCP01 → destino)..."
+    log "📋 Copiando dados do template $TEMPLATE_DB ($TEMPLATE_SERVER_NAME → destino)..."
     DUMP_FILE="/tmp/template_dump_$$.sql"
     
-    # Fazer dump do template no GCP01
+    # Fazer dump do template no servidor de origem
     log "📤 Fazendo dump do template..."
     if ! run_psql_safe pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
         log_error "Falha ao fazer dump do template $TEMPLATE_DB"
