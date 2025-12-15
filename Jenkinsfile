@@ -181,18 +181,33 @@ chmod +x scripts/*.sh
     --db-password "${DB_PASSWORD}" \\
     --workspace "/tmp/pipeline-${BUILD_NUMBER}"
 
-echo "✅ Criação do banco concluída!"
+# Verificar se houve erro na criação
+if [ \$? -ne 0 ]; then
+    echo "❌ ERRO: Falha na criação do banco de dados!"
+    exit 1
+fi
+
+echo "✅ Criação do banco concluída com sucesso!"
 ENDCREATE
+                                
+                                # Capturar exit code do SSH
+                                SSH_EXIT_CODE=\$?
                                 
                                 # Limpar
                                 ssh-agent -k
                                 rm -f /tmp/ssh-add-script-\$\$.sh
+                                
+                                # Verificar se houve erro
+                                if [ \$SSH_EXIT_CODE -ne 0 ]; then
+                                    echo "❌ ERRO: Script remoto falhou com código: \$SSH_EXIT_CODE"
+                                    exit \$SSH_EXIT_CODE
+                                fi
                             """,
                             returnStatus: true
                         )
                         
                         if (createResult != 0) {
-                            error("❌ Falha na criação do banco de dados!")
+                            error("❌ Falha na criação do banco de dados! Exit code: ${createResult}")
                         }
                         
                         echo "✅ Banco de dados ${params.NOME_BANCO} criado com sucesso!"
@@ -250,18 +265,33 @@ cd /tmp/pipeline-${BUILD_NUMBER}
     --servidor "${params.SERVIDOR}" \\
     --workspace "/tmp/pipeline-${BUILD_NUMBER}"
 
-echo "✅ Deploy da aplicação concluído!"
+# Verificar se houve erro no deploy
+if [ \$? -ne 0 ]; then
+    echo "❌ ERRO: Falha no deploy da aplicação!"
+    exit 1
+fi
+
+echo "✅ Deploy da aplicação concluído com sucesso!"
 ENDDEPLOY
+                                
+                                # Capturar exit code do SSH
+                                DEPLOY_EXIT_CODE=\$?
                                 
                                 # Limpar
                                 ssh-agent -k
                                 rm -f /tmp/ssh-add-script-\$\$.sh
+                                
+                                # Verificar se houve erro
+                                if [ \$DEPLOY_EXIT_CODE -ne 0 ]; then
+                                    echo "❌ ERRO: Deploy falhou com código: \$DEPLOY_EXIT_CODE"
+                                    exit \$DEPLOY_EXIT_CODE
+                                fi
                             """,
                             returnStatus: true
                         )
                         
                         if (deployResult != 0) {
-                            error("❌ Falha no deploy da aplicação!")
+                            error("❌ Falha no deploy da aplicação! Exit code: ${deployResult}")
                         }
                         
                         echo "✅ Deploy da aplicação concluído com sucesso!"
@@ -319,12 +349,27 @@ if [ "${params.DEPLOY_APP}" = "true" ]; then
         --nome-banco "${params.NOME_BANCO}"
 fi
 
-echo "✅ Todas as verificações concluídas!"
+# Verificar se todas as verificações passaram
+if [ \$? -ne 0 ]; then
+    echo "❌ ERRO: Verificações falharam!"
+    exit 1
+fi
+
+echo "✅ Todas as verificações concluídas com sucesso!"
 ENDVERIFY
+                            
+                            # Capturar exit code do SSH
+                            VERIFY_EXIT_CODE=\$?
                             
                             # Limpar
                             ssh-agent -k
                             rm -f /tmp/ssh-add-script-\$\$.sh
+                            
+                            # Verificar se houve erro na verificação
+                            if [ \$VERIFY_EXIT_CODE -ne 0 ]; then
+                                echo "❌ ERRO: Verificações falharam com código: \$VERIFY_EXIT_CODE"
+                                exit \$VERIFY_EXIT_CODE
+                            fi
                         """
                     }
                     

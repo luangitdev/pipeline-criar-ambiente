@@ -114,7 +114,11 @@ execute_sql() {
     local sql="$1"
     local database="${2:-postgres}"
     
-    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$database" -c "$sql"
+    if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$database" -c "$sql"; then
+        log_error "Falha ao executar comando SQL: $sql"
+        return 1
+    fi
+    return 0
 }
 
 # Função para executar arquivo SQL
@@ -128,15 +132,34 @@ execute_sql_file() {
     fi
     
     log "📄 Executando: $(basename "$file")"
-    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$database" -f "$file"
+    if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$database" -f "$file"; then
+        log_error "Falha ao executar o arquivo SQL: $(basename "$file")"
+        return 1
+    fi
+    return 0
 }
 
-# 1. Criar banco de dados
+# 1. Testar conexão com o banco antes de prosseguir
+log "🔍 Testando conexão com o servidor de banco..."
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT 1;" &>/dev/null; then
+    log_error "Falha ao conectar com o servidor PostgreSQL em $DB_HOST:$DB_PORT"
+    log_error "Verifique se o servidor está rodando e acessível"
+    exit 1
+fi
+log_success "Conexão com o servidor estabelecida com sucesso!"
+
+# 2. Criar banco de dados
 log "🗄️ Criando banco de dados..."
 if execute_sql "CREATE DATABASE \"$NOME_BANCO\" WITH TEMPLATE \"$TEMPLATE_DB\";" 2>/dev/null; then
     log_success "Banco $NOME_BANCO criado com sucesso!"
 else
-    log_warning "Banco $NOME_BANCO já existe ou erro na criação"
+    # Verificar se o banco já existe
+    if PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
+        log_warning "Banco $NOME_BANCO já existe, continuando..."
+    else
+        log_error "Falha ao criar o banco $NOME_BANCO"
+        exit 1
+    fi
 fi
 
 # 2. Processar dados do ambiente

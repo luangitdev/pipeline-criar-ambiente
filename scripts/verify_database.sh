@@ -62,28 +62,35 @@ execute_sql() {
     PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$database" -t -c "$sql" | xargs
 }
 
+# Primeiro testar conexão com o servidor
+log "🔍 Testando conexão com o servidor PostgreSQL..."
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT 1;" &>/dev/null; then
+    log_error "Falha ao conectar com o servidor PostgreSQL em $DB_HOST:$DB_PORT"
+    log_error "Verifique se o servidor está rodando e acessível"
+    exit 1
+fi
+log_success "Conexão com o servidor estabelecida"
+
 # Verificar se banco existe
 log "📄 Verificando existência do banco..."
-if PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
-    log_success "Banco $NOME_BANCO existe"
-else
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
     log_error "Banco $NOME_BANCO não encontrado!"
     exit 1
 fi
+log_success "Banco $NOME_BANCO existe"
 
-# Verificar conectividade
-log "🔗 Testando conectividade..."
-if result=$(execute_sql "SELECT 'OK' as status;"); then
-    if [[ "$result" == "OK" ]]; then
-        log_success "Conectividade OK"
-    else
-        log_error "Falha na conectividade"
-        exit 1
-    fi
-else
-    log_error "Erro ao conectar no banco"
+# Verificar conectividade específica do banco
+log "🔗 Testando conectividade com o banco..."
+if ! result=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT 'OK' as status;" 2>/dev/null | xargs); then
+    log_error "Erro ao conectar no banco $NOME_BANCO"
     exit 1
 fi
+
+if [[ "$result" != "OK" ]]; then
+    log_error "Falha na conectividade com o banco"
+    exit 1
+fi
+log_success "Conectividade com o banco OK"
 
 # Verificar tabelas essenciais
 log "📋 Verificando tabelas essenciais..."
