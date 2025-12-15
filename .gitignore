@@ -1,0 +1,14 @@
+# Arquivos gerados automaticamente
+sql/*/start_*.sql
+
+# Arquivos temporários
+temp/
+*.tmp
+*.log
+
+# Logs do Jenkins
+erro.log
+
+# Arquivos de backup
+*.bak
+*.backup

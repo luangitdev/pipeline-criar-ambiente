@@ -46,7 +46,6 @@ if [[ -f "$DADOS_FILE" ]]; then
     while IFS=':' read -r key value; do
         # Remover espaços e converter para minúsculo
         key=$(echo "$key" | xargs | tr '[:upper:]' '[:lower:]' | sed 's/ã/a/g; s/ç/c/g; s/ /_/g')
-        value=$(echo "$value" | xargs)
         
         case "$key" in
             "endereco") ENDERECO="$value" ;;
@@ -60,7 +59,7 @@ if [[ -f "$DADOS_FILE" ]]; then
             "lat"|"latitude") LAT="$value" ;;
             "long"|"longitude") LONG="$value" ;;
             "cnpj") CNPJ="$value" ;;
-            "razao_social"|"razao social") RAZAO_SOCIAL="$value" ;;
+            "razao_social"|"razao social"|"razao_social") RAZAO_SOCIAL="$value" ;;
         esac
     done < "$DADOS_FILE"
     
@@ -82,6 +81,42 @@ cat > "$OUTPUT_FILE" << EOF
 
 -- Configurações iniciais do ambiente
 BEGIN;
+
+-- Garantir que as colunas necessárias existam na tabela empresa
+DO \$\$ 
+BEGIN
+    -- Adicionar colunas se não existirem
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='endereco') THEN
+        ALTER TABLE empresa ADD COLUMN endereco VARCHAR(255);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='bairro') THEN
+        ALTER TABLE empresa ADD COLUMN bairro VARCHAR(100);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='cidade') THEN
+        ALTER TABLE empresa ADD COLUMN cidade VARCHAR(100);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='estado') THEN
+        ALTER TABLE empresa ADD COLUMN estado VARCHAR(2);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='cep') THEN
+        ALTER TABLE empresa ADD COLUMN cep VARCHAR(10);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='lat') THEN
+        ALTER TABLE empresa ADD COLUMN lat DECIMAL(10,8);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='long') THEN
+        ALTER TABLE empresa ADD COLUMN long DECIMAL(11,8);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='cnpj') THEN
+        ALTER TABLE empresa ADD COLUMN cnpj VARCHAR(20);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='razao_social') THEN
+        ALTER TABLE empresa ADD COLUMN razao_social VARCHAR(255);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='estado_nome') THEN
+        ALTER TABLE empresa ADD COLUMN estado_nome VARCHAR(100);
+    END IF;
+END \$\$;
 
 -- Inserir/atualizar dados da empresa
 INSERT INTO empresa (endereco, bairro, cidade, estado, cep, lat, long, cnpj, razao_social, estado_nome)
