@@ -146,6 +146,9 @@ execute_sql_file() {
 EFFECTIVE_HOST="$DB_HOST"
 EFFECTIVE_PORT="$DB_PORT"
 
+# Inicializar variável de túnel SSH (mesmo que não usado)
+TUNNEL_PID=""
+
 # Template sempre centralizado no GCP01
 TEMPLATE_HOST="10.200.0.19"
 TEMPLATE_PORT="5432"
@@ -154,15 +157,31 @@ log "🔗 Configuração de conexão:"
 log "   - Servidor destino: $EFFECTIVE_HOST:$EFFECTIVE_PORT" 
 log "   - Template source: $TEMPLATE_HOST:$TEMPLATE_PORT (GCP01)"
 
-# 1. Testar conexão com o banco antes de prosseguir
+# 1. Verificar ambiente e ferramentas
+log "🔧 Verificando ambiente de execução..."
+log "   - Usuário: $(whoami)"
+log "   - Sistema: $(uname -a)"
+log "   - PostgreSQL client: $(which psql 2>/dev/null || echo 'NÃO ENCONTRADO')"
+
+if ! command -v psql &> /dev/null; then
+    log_error "PostgreSQL client (psql) não está instalado no bastion host!"
+    log_error "Execute: sudo apt-get update && sudo apt-get install -y postgresql-client"
+    exit 1
+fi
+
+# 2. Testar conexão com o banco antes de prosseguir
 log "🔍 Testando conexão com o servidor de banco..."
 if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d postgres -c "SELECT 1;" &>/dev/null; then
     log_error "Falha ao conectar com o servidor PostgreSQL em $EFFECTIVE_HOST:$EFFECTIVE_PORT (original: $DB_HOST:$DB_PORT)"
-    log_error "Verifique se o servidor está rodando e acessível"
+    log_error "Verifique se:"
+    log_error "  1. O servidor PostgreSQL está rodando"
+    log_error "  2. O bastion host tem acesso à rede privada"
+    log_error "  3. As credenciais estão corretas"
+    log_error "  4. A porta $EFFECTIVE_PORT está aberta"
     
     # Limpar tunnel se criado
-    if [[ -n "$TUNNEL_PID" ]]; then
-        kill $TUNNEL_PID 2>/dev/null || true
+    if [[ -n "${TUNNEL_PID:-}" ]]; then
+        kill "$TUNNEL_PID" 2>/dev/null || true
     fi
     exit 1
 fi
