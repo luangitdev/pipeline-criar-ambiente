@@ -96,6 +96,29 @@ fi
 DB_PASSWORD_ENCODED=$(echo -n "$DB_PASSWORD" | base64)
 log "🔧 Senha codificada em base64 para evitar expansão de caracteres especiais"
 
+# Função para comparar versões numericamente
+# Retorna: 0 se v1 == v2, 1 se v1 > v2, -1 se v1 < v2
+compare_versions() {
+    local v1="$1"
+    local v2="$2"
+    
+    # Se as versões são iguais
+    if [[ "$v1" == "$v2" ]]; then
+        echo "0"
+        return
+    fi
+    
+    # Usar sort com versão numérica para comparar
+    local sorted=$(printf '%s\n%s\n' "$v1" "$v2" | sort -V)
+    local first_line=$(echo "$sorted" | head -n1)
+    
+    if [[ "$first_line" == "$v1" ]]; then
+        echo "-1"  # v1 < v2
+    else
+        echo "1"   # v1 > v2
+    fi
+}
+
 # Função para executar psql com senha segura
 run_psql_safe() {
     local password_decoded=$(echo "$DB_PASSWORD_ENCODED" | base64 -d)
@@ -361,9 +384,13 @@ if [[ -d "$UPDATES_DIR" ]]; then
         if [[ -f "$update_file" ]]; then
             update_version=$(basename "$update_file" .sql)
             
-            # Verificar se update deve ser aplicado
+            # Verificar se update deve ser aplicado usando comparação numérica de versões
             # Condição: versão do update > versão atual E versão do update <= versão desejada
-            if [[ "$update_version" > "$VERSAO_ATUAL" ]] && [[ "$update_version" < "$VERSAO_DESEJADA" || "$update_version" == "$VERSAO_DESEJADA" ]]; then
+            local comp_atual=$(compare_versions "$update_version" "$VERSAO_ATUAL")
+            local comp_desejada=$(compare_versions "$update_version" "$VERSAO_DESEJADA")
+            
+            # update_version > VERSAO_ATUAL AND update_version <= VERSAO_DESEJADA
+            if [[ "$comp_atual" == "1" ]] && [[ "$comp_desejada" == "-1" || "$comp_desejada" == "0" ]]; then
                 log "🔄 Aplicando update: $update_version (atual: $VERSAO_ATUAL, desejada: $VERSAO_DESEJADA)"
                 if execute_sql_file "$update_file" "$NOME_BANCO"; then
                     ((UPDATE_COUNT++))
@@ -374,6 +401,7 @@ if [[ -d "$UPDATES_DIR" ]]; then
                 fi
             else
                 log "⏭️ Pulando update $update_version (fora do intervalo: $VERSAO_ATUAL < x <= $VERSAO_DESEJADA)"
+                log "🔍 DEBUG: comp_atual=$comp_atual, comp_desejada=$comp_desejada"
             fi
         fi
     done
