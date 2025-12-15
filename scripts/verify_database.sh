@@ -54,26 +54,37 @@ done
 
 log "🔍 Verificando banco de dados: $NOME_BANCO"
 
+# Configurar conexão (assumindo que o bastion host já tem acesso direto ao DB)
+EFFECTIVE_HOST="$DB_HOST"
+EFFECTIVE_PORT="$DB_PORT"
+
+log "🔗 Configuração de conexão: $EFFECTIVE_HOST:$EFFECTIVE_PORT"
+
 # Função para executar SQL
 execute_sql() {
     local sql="$1"
     local database="${2:-$NOME_BANCO}"
     
-    PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$database" -t -c "$sql" | xargs
+    PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -t -c "$sql" | xargs
 }
 
 # Primeiro testar conexão com o servidor
 log "🔍 Testando conexão com o servidor PostgreSQL..."
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT 1;" &>/dev/null; then
-    log_error "Falha ao conectar com o servidor PostgreSQL em $DB_HOST:$DB_PORT"
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d postgres -c "SELECT 1;" &>/dev/null; then
+    log_error "Falha ao conectar com o servidor PostgreSQL em $EFFECTIVE_HOST:$EFFECTIVE_PORT (original: $DB_HOST:$DB_PORT)"
     log_error "Verifique se o servidor está rodando e acessível"
+    
+    # Limpar tunnel se criado
+    if [[ -n "$TUNNEL_PID" ]]; then
+        kill $TUNNEL_PID 2>/dev/null || true
+    fi
     exit 1
 fi
 log_success "Conexão com o servidor estabelecida"
 
 # Verificar se banco existe
 log "📄 Verificando existência do banco..."
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
     log_error "Banco $NOME_BANCO não encontrado!"
     exit 1
 fi
@@ -81,7 +92,7 @@ log_success "Banco $NOME_BANCO existe"
 
 # Verificar conectividade específica do banco
 log "🔗 Testando conectividade com o banco..."
-if ! result=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT 'OK' as status;" 2>/dev/null | xargs); then
+if ! result=$(PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT 'OK' as status;" 2>/dev/null | xargs); then
     log_error "Erro ao conectar no banco $NOME_BANCO"
     exit 1
 fi
@@ -113,5 +124,7 @@ if versao=$(execute_sql "SELECT valor_texto FROM configuracao WHERE nomecampo = 
 else
     log "Versão não encontrada (pode ser normal)"
 fi
+
+# Conexão finalizada
 
 log_success "✅ Verificação do banco concluída com sucesso!"

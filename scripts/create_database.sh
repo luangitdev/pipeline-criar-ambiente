@@ -114,7 +114,7 @@ execute_sql() {
     local sql="$1"
     local database="${2:-postgres}"
     
-    if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$database" -c "$sql"; then
+    if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -c "$sql"; then
         log_error "Falha ao executar comando SQL: $sql"
         return 1
     fi
@@ -132,18 +132,29 @@ execute_sql_file() {
     fi
     
     log "📄 Executando: $(basename "$file")"
-    if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$database" -f "$file"; then
+    if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -f "$file"; then
         log_error "Falha ao executar o arquivo SQL: $(basename "$file")"
         return 1
     fi
     return 0
 }
 
+# Configurar conexão (assumindo que o bastion host já tem acesso direto ao DB)
+EFFECTIVE_HOST="$DB_HOST"
+EFFECTIVE_PORT="$DB_PORT"
+
+log "🔗 Configuração de conexão: $EFFECTIVE_HOST:$EFFECTIVE_PORT"
+
 # 1. Testar conexão com o banco antes de prosseguir
 log "🔍 Testando conexão com o servidor de banco..."
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT 1;" &>/dev/null; then
-    log_error "Falha ao conectar com o servidor PostgreSQL em $DB_HOST:$DB_PORT"
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d postgres -c "SELECT 1;" &>/dev/null; then
+    log_error "Falha ao conectar com o servidor PostgreSQL em $EFFECTIVE_HOST:$EFFECTIVE_PORT (original: $DB_HOST:$DB_PORT)"
     log_error "Verifique se o servidor está rodando e acessível"
+    
+    # Limpar tunnel se criado
+    if [[ -n "$TUNNEL_PID" ]]; then
+        kill $TUNNEL_PID 2>/dev/null || true
+    fi
     exit 1
 fi
 log_success "Conexão com o servidor estabelecida com sucesso!"
@@ -154,7 +165,7 @@ if execute_sql "CREATE DATABASE \"$NOME_BANCO\" WITH TEMPLATE \"$TEMPLATE_DB\";"
     log_success "Banco $NOME_BANCO criado com sucesso!"
 else
     # Verificar se o banco já existe
-    if PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
+    if PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
         log_warning "Banco $NOME_BANCO já existe, continuando..."
     else
         log_error "Falha ao criar o banco $NOME_BANCO"
@@ -193,9 +204,9 @@ fi
 # 5. Obter versão atual do banco
 log "📊 Verificando versão atual do banco..."
 if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
-    VERSAO_ATUAL=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT valor_texto FROM configuracao WHERE nomecampo = 'versao_banco';" | xargs || echo "0.0.0.0-0")
+    VERSAO_ATUAL=$(PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT valor_texto FROM configuracao WHERE nomecampo = 'versao_banco';" | xargs || echo "0.0.0.0-0")
 else
-    VERSAO_ATUAL=$(PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT versao FROM versaobanco ORDER BY id DESC LIMIT 1;" | xargs || echo "0.0.0.0-0")
+    VERSAO_ATUAL=$(PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT versao FROM versaobanco ORDER BY id DESC LIMIT 1;" | xargs || echo "0.0.0.0-0")
 fi
 
 log "📋 Versão atual: $VERSAO_ATUAL"
@@ -240,6 +251,8 @@ if [[ -f "$CREDENTIALS_SQL" ]]; then
         log_warning "Erro ao aplicar credenciais (pode ser normal se usuários já existem)"
     fi
 fi
+
+# Conexão finalizada
 
 log_success "🎉 Criação do banco de dados concluída com sucesso!"
 log "📋 Resumo:"
