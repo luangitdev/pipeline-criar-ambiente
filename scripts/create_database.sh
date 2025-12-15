@@ -173,7 +173,8 @@ log_success "PostgreSQL client encontrado: $(which psql)"
 
 # 2. Testar conexão com o banco antes de prosseguir
 log "🔍 Testando conexão com o servidor de banco..."
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d postgres -c "SELECT 1;" &>/dev/null; then
+# Usar template database para teste pois usuário pode não ter acesso ao 'postgres'
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
     log_error "Falha ao conectar com o servidor PostgreSQL em $EFFECTIVE_HOST:$EFFECTIVE_PORT (original: $DB_HOST:$DB_PORT)"
     log_error "Verifique se:"
     log_error "  1. O servidor PostgreSQL está rodando"
