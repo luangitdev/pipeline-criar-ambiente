@@ -127,7 +127,7 @@ execute_sql() {
     local sql="$1"
     local database="${2:-$TEMPLATE_DB}"  # Usar template como padrão em vez de 'postgres'
     
-    if ! PGPASSWORD="$DB_PASSWORD_SAFE" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -c "$sql"; then
+    if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -c "$sql"; then
         log_error "Falha ao executar comando SQL: $sql"
         return 1
     fi
@@ -145,7 +145,7 @@ execute_sql_file() {
     fi
     
     log "📄 Executando: $(basename "$file")"
-    if ! PGPASSWORD="$DB_PASSWORD_SAFE" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -f "$file"; then
+    if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -f "$file"; then
         log_error "Falha ao executar o arquivo SQL: $(basename "$file")"
         return 1
     fi
@@ -212,7 +212,7 @@ log_success "Conexão com o servidor estabelecida com sucesso!"
 # 2. Verificar se template existe no servidor centralizado (GCP01)
 log "🔍 Verificando se template existe no GCP01: $TEMPLATE_DB"
 # Conectar no próprio template para verificar se existe e se temos acesso
-if ! PGPASSWORD="$DB_PASSWORD_SAFE" psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
+if ! run_psql_safe psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
     log_error "❌ Template '$TEMPLATE_DB' não encontrado ou sem acesso no servidor $TEMPLATE_HOST:$TEMPLATE_PORT (GCP01)"
     log_error "💡 Verifique se:"
     log_error "   - O template '$TEMPLATE_DB' existe no GCP01"
@@ -226,7 +226,7 @@ log "🗄️ Criando banco $NOME_BANCO no servidor de destino..."
 
 # Primeiro verificar se o banco já existe no destino
 # Conectar no template para fazer a verificação
-if PGPASSWORD="$DB_PASSWORD_SAFE" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "\l" | grep -qw "$NOME_BANCO"; then
+if run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "\l" | grep -qw "$NOME_BANCO"; then
     log_warning "Banco $NOME_BANCO já existe no servidor de destino, continuando..."
 else
     # Criar banco vazio no destino
@@ -243,7 +243,7 @@ else
     
     # Fazer dump do template no GCP01
     log "📤 Fazendo dump do template..."
-    if ! PGPASSWORD="$DB_PASSWORD_SAFE" pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
+    if ! run_psql_safe pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
         log_error "Falha ao fazer dump do template $TEMPLATE_DB"
         rm -f "$DUMP_FILE"
         exit 1
@@ -251,7 +251,7 @@ else
     
     # Restaurar no banco de destino
     log "📥 Restaurando dados no banco de destino..."
-    if ! PGPASSWORD="$DB_PASSWORD_SAFE" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" < "$DUMP_FILE"; then
+    if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" < "$DUMP_FILE"; then
         log_error "Falha ao restaurar dados no banco $NOME_BANCO"
         rm -f "$DUMP_FILE"
         exit 1
@@ -293,9 +293,9 @@ fi
 # 5. Obter versão atual do banco
 log "📊 Verificando versão atual do banco..."
 if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
-    VERSAO_ATUAL=$(PGPASSWORD="$DB_PASSWORD_SAFE" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT valor_texto FROM configuracao WHERE nomecampo = 'versao_banco';" | xargs || echo "0.0.0.0-0")
+    VERSAO_ATUAL=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT valor_texto FROM configuracao WHERE nomecampo = 'versao_banco';" | xargs || echo "0.0.0.0-0")
 else
-    VERSAO_ATUAL=$(PGPASSWORD="$DB_PASSWORD_SAFE" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT versao FROM versaobanco ORDER BY id DESC LIMIT 1;" | xargs || echo "0.0.0.0-0")
+    VERSAO_ATUAL=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT versao FROM versaobanco ORDER BY id DESC LIMIT 1;" | xargs || echo "0.0.0.0-0")
 fi
 
 log "📋 Versão atual: $VERSAO_ATUAL"
