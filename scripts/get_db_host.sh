@@ -10,13 +10,16 @@ SERVIDOR="$1"
 # Mapeamento de servidores para hosts de banco
 case "$SERVIDOR" in
     "gcp01")
-        echo "10.128.0.100"
+        echo "10.200.0.19"
         ;;
     "gcp02")
-        echo "10.128.0.101"
+        echo "10.200.0.29"
         ;;
-    "local01")
-        echo "localhost"
+    "gcp-pln")
+        echo "10.200.0.3"
+        ;;
+    "gcp03")
+        echo "10.200.0.40"
         ;;
     *)
         echo "❌ Servidor desconhecido: $SERVIDOR" >&2
