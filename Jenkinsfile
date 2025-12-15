@@ -195,6 +195,7 @@ EOF
                                 scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
                                 scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/sql/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
                                 scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/dados/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
+                                scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/temp/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
                                 
                                 # Executar scripts no bastion
                                 ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDCREATE'
