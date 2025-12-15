@@ -164,9 +164,28 @@ log "   - Sistema: $(uname -a)"
 log "   - PostgreSQL client: $(which psql 2>/dev/null || echo 'NÃO ENCONTRADO')"
 
 if ! command -v psql &> /dev/null; then
-    log_error "PostgreSQL client (psql) não está instalado no bastion host!"
-    log_error "Execute: sudo apt-get update && sudo apt-get install -y postgresql-client"
-    exit 1
+    log_warning "PostgreSQL client não encontrado. Instalando..."
+    
+    # Detectar distribuição
+    if command -v apt-get &> /dev/null; then
+        sudo apt-get update -y && sudo apt-get install -y postgresql-client
+    elif command -v yum &> /dev/null; then
+        sudo yum install -y postgresql
+    elif command -v dnf &> /dev/null; then
+        sudo dnf install -y postgresql
+    else
+        log_error "Não foi possível instalar postgresql-client automaticamente"
+        log_error "Execute manualmente: sudo apt-get install -y postgresql-client"
+        exit 1
+    fi
+    
+    # Verificar se instalou com sucesso
+    if ! command -v psql &> /dev/null; then
+        log_error "Falha ao instalar PostgreSQL client"
+        exit 1
+    fi
+    
+    log_success "PostgreSQL client instalado com sucesso!"
 fi
 
 # 2. Testar conexão com o banco antes de prosseguir
