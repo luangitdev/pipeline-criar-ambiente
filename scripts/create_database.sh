@@ -92,10 +92,15 @@ if [[ -z "$TIPO_AMBIENTE" || -z "$NOME_BANCO" || -z "$DB_HOST" || -z "$DB_USER" 
     exit 1
 fi
 
-# Tratar caracteres especiais na senha (principalmente $)
-# Proteger contra expansão de variáveis
-DB_PASSWORD_SAFE=$(printf '%s' "$DB_PASSWORD")
-log "🔧 Senha processada para evitar expansão de variáveis"
+# Proteger senha contra expansão usando base64 encoding
+DB_PASSWORD_ENCODED=$(echo -n "$DB_PASSWORD" | base64)
+log "🔧 Senha codificada em base64 para evitar expansão de caracteres especiais"
+
+# Função para executar psql com senha segura
+run_psql_safe() {
+    local password_decoded=$(echo "$DB_PASSWORD_ENCODED" | base64 -d)
+    PGPASSWORD="$password_decoded" "$@"
+}
 
 log "🚀 INICIANDO CRIAÇÃO DO BANCO DE DADOS"
 log "📋 Configuração:"
@@ -181,8 +186,8 @@ log "🔍 Testando conexão com o servidor de banco..."
 log "🔧 Comando: psql -h $EFFECTIVE_HOST -p $EFFECTIVE_PORT -U $DB_USER -d $TEMPLATE_DB -c \"SELECT 1;\""
 
 # Usar template database para teste pois usuário pode não ter acesso ao 'postgres'
-# Capturar erro específico
-PSQL_ERROR=$(PGPASSWORD="$DB_PASSWORD_SAFE" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" 2>&1)
+# Capturar erro específico usando função segura
+PSQL_ERROR=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" 2>&1)
 PSQL_EXIT_CODE=$?
 
 if [ $PSQL_EXIT_CODE -ne 0 ]; then
