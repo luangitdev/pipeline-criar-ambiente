@@ -3,7 +3,7 @@
 # Script principal para criação de banco de dados
 # Baseado na lógica do Ansible, mas adaptado para execução direta
 
-set -euo pipefail
+set -uo pipefail  # Removido -e para permitir tratamento manual de erros
 
 # Cores para output
 RED='\033[0;31m'
