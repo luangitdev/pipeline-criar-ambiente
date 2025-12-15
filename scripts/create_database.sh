@@ -92,6 +92,11 @@ if [[ -z "$TIPO_AMBIENTE" || -z "$NOME_BANCO" || -z "$DB_HOST" || -z "$DB_USER" 
     exit 1
 fi
 
+# Debug das credenciais recebidas
+log "🔍 DEBUG CREDENCIAIS:"
+log "   - DB_USER: '$DB_USER' (tamanho: ${#DB_USER})"
+log "   - DB_PASSWORD: [TAMANHO: ${#DB_PASSWORD}] [PRIMEIROS 3 CHARS: ${DB_PASSWORD:0:3}***]"
+
 # Proteger senha contra expansão usando base64 encoding
 DB_PASSWORD_ENCODED=$(echo -n "$DB_PASSWORD" | base64)
 log "🔧 Senha codificada em base64 para evitar expansão de caracteres especiais"
