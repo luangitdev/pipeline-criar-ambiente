@@ -115,7 +115,7 @@ log "📋 Template obrigatório: $TEMPLATE_DB"
 # Função para executar SQL
 execute_sql() {
     local sql="$1"
-    local database="${2:-postgres}"
+    local database="${2:-$TEMPLATE_DB}"  # Usar template como padrão em vez de 'postgres'
     
     if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -c "$sql"; then
         log_error "Falha ao executar comando SQL: $sql"
@@ -201,11 +201,12 @@ log_success "Conexão com o servidor estabelecida com sucesso!"
 
 # 2. Verificar se template existe no servidor centralizado (GCP01)
 log "🔍 Verificando se template existe no GCP01: $TEMPLATE_DB"
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$TEMPLATE_DB"; then
-    log_error "❌ Template '$TEMPLATE_DB' não encontrado no servidor centralizado $TEMPLATE_HOST:$TEMPLATE_PORT (GCP01)"
-    log_error "📋 Bancos disponíveis no GCP01:"
-    PGPASSWORD="$DB_PASSWORD" psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -v "^$" | sort | head -20
-    log_error "💡 Certifique-se de que o template '$TEMPLATE_DB' existe no GCP01"
+# Conectar no próprio template para verificar se existe e se temos acesso
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
+    log_error "❌ Template '$TEMPLATE_DB' não encontrado ou sem acesso no servidor $TEMPLATE_HOST:$TEMPLATE_PORT (GCP01)"
+    log_error "💡 Verifique se:"
+    log_error "   - O template '$TEMPLATE_DB' existe no GCP01"
+    log_error "   - O usuário '$DB_USER' tem acesso ao template"
     exit 1
 fi
 log_success "Template $TEMPLATE_DB encontrado no GCP01!"
@@ -214,7 +215,8 @@ log_success "Template $TEMPLATE_DB encontrado no GCP01!"
 log "🗄️ Criando banco $NOME_BANCO no servidor de destino..."
 
 # Primeiro verificar se o banco já existe no destino
-if PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
+# Conectar no template para fazer a verificação
+if PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "\l" | grep -qw "$NOME_BANCO"; then
     log_warning "Banco $NOME_BANCO já existe no servidor de destino, continuando..."
 else
     # Criar banco vazio no destino
