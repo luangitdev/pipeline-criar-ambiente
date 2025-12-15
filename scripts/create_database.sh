@@ -344,9 +344,10 @@ if [[ -d "$UPDATES_DIR" ]]; then
         if [[ -f "$update_file" ]]; then
             update_version=$(basename "$update_file" .sql)
             
-            # Verificar se update deve ser aplicado (comparação lexicográfica)
-            if [[ "$update_version" > "$VERSAO_ATUAL" ]]; then
-                log "🔄 Aplicando update: $update_version"
+            # Verificar se update deve ser aplicado
+            # Condição: versão do update > versão atual E versão do update <= versão desejada
+            if [[ "$update_version" > "$VERSAO_ATUAL" ]] && [[ "$update_version" < "$VERSAO_DESEJADA" || "$update_version" == "$VERSAO_DESEJADA" ]]; then
+                log "🔄 Aplicando update: $update_version (atual: $VERSAO_ATUAL, desejada: $VERSAO_DESEJADA)"
                 if execute_sql_file "$update_file" "$NOME_BANCO"; then
                     ((UPDATE_COUNT++))
                     log_success "Update $update_version aplicado"
@@ -354,6 +355,8 @@ if [[ -d "$UPDATES_DIR" ]]; then
                     log_error "Falha ao aplicar update $update_version"
                     exit 1
                 fi
+            else
+                log "⏭️ Pulando update $update_version (fora do intervalo: $VERSAO_ATUAL < x <= $VERSAO_DESEJADA)"
             fi
         fi
     done

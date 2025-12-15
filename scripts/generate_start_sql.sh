@@ -46,6 +46,7 @@ if [[ -f "$DADOS_FILE" ]]; then
     while IFS=':' read -r key value; do
         # Remover espaços e converter para minúsculo
         key=$(echo "$key" | xargs | tr '[:upper:]' '[:lower:]' | sed 's/ã/a/g; s/ç/c/g; s/ /_/g')
+        value=$(echo "$value" | xargs)
         
         case "$key" in
             "endereco") ENDERECO="$value" ;;
@@ -73,107 +74,82 @@ OUTPUT_FILE="$OUTPUT_DIR/start_${TIPO_AMBIENTE}.sql"
 
 log "📝 Gerando arquivo: $OUTPUT_FILE"
 
-# Template SQL personalizado
+# Template SQL seguindo exatamente o padrão do Ansible
 cat > "$OUTPUT_FILE" << EOF
--- Arquivo start.sql gerado automaticamente
--- Ambiente: $TIPO_AMBIENTE
--- Data: $(date)
+-- DADOS INICIAIS GERADOS DINAMICAMENTE PARA AMBIENTE PTF
+-- INSERT na tabela 'empresa'
+INSERT INTO empresa(cnpj, nome, codigocontrol, cobranca, valorunitario, bandeira, projeto, identificador, produto)
+VALUES ('$CNPJ', '$RAZAO_SOCIAL', '0', 'total', 50, 'Outros', '0', '1', 'PATHFIND');
 
--- Configurações iniciais do ambiente
-BEGIN;
+-- UPDATE na tabela 'empresa'
+UPDATE public.empresa SET id=1;
 
--- Garantir que as colunas necessárias existam na tabela empresa
-DO \$\$ 
+-- INSERT na tabela 'maparoutes'
+INSERT INTO maparoutes(descricao,nome,referencia) VALUES ('$ESTADO', '$ESTADO', 1);
+
+-- UPDATE na tabela 'maparoutes'
+UPDATE maparoutes SET descricao=(SELECT nome FROM estado WHERE sigla='$ESTADO'), nome='$ESTADO';
+UPDATE maparoutes SET id=1;
+
+-- INSERT na tabela 'centrodistribuicao'
+INSERT INTO centrodistribuicao(bairro,cep,codigo,endereco,latitude,longitude,nome,id_cidade,id_empresa,mapa_id,identificador,idpromax,licencadistribuidor,nomeprogramagerador,versaolayoutpathfind,idchk)
+VALUES ('$BAIRRO', '$CEP', '0', '$ENDERECO', $LAT, $LONG, '$RAZAO_SOCIAL', (SELECT id FROM cidade WHERE nome ILIKE '$CIDADE' LIMIT 1), 1, 1, '1', '0', 1, '0', '1', '0');
+
+-- UPDATE na tabela 'centrodistribuicao'
+UPDATE centrodistribuicao SET id=1;
+
+-- INSERT na tabela 'centrodistribuicao'
+INSERT INTO centrodistribuicao(bairro,cep,codigo,endereco,latitude,longitude,nome,id_cidade,id_empresa,mapa_id,identificador,idpromax,licencadistribuidor,nomeprogramagerador,versaolayoutpathfind,idchk)
+VALUES ('$BAIRRO', '$CEP', '0', '$ENDERECO', $LAT, $LONG, '$RAZAO_SOCIAL', (SELECT id FROM cidade WHERE nome ILIKE '$CIDADE' LIMIT 1), 1, 1, '1', '0', 1, '0', '1', '0');
+
+-- UPDATE na tabela 'centrodistribuicao'
+UPDATE centrodistribuicao SET id=2 where id!=1;
+
+-- Configurações baseadas no servidor
+-- Função para checar as sequências
+CREATE OR REPLACE FUNCTION check_sequences()
+RETURNS void AS 
+\$BODY\$
+DECLARE
+t record;
+s_name record;
+sch_lv int;
+max_id int;
 BEGIN
-    -- Adicionar colunas se não existirem
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='endereco') THEN
-        ALTER TABLE empresa ADD COLUMN endereco VARCHAR(255);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='bairro') THEN
-        ALTER TABLE empresa ADD COLUMN bairro VARCHAR(100);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='cidade') THEN
-        ALTER TABLE empresa ADD COLUMN cidade VARCHAR(100);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='estado') THEN
-        ALTER TABLE empresa ADD COLUMN estado VARCHAR(2);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='cep') THEN
-        ALTER TABLE empresa ADD COLUMN cep VARCHAR(10);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='lat') THEN
-        ALTER TABLE empresa ADD COLUMN lat DECIMAL(10,8);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='long') THEN
-        ALTER TABLE empresa ADD COLUMN long DECIMAL(11,8);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='cnpj') THEN
-        ALTER TABLE empresa ADD COLUMN cnpj VARCHAR(20);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='razao_social') THEN
-        ALTER TABLE empresa ADD COLUMN razao_social VARCHAR(255);
-    END IF;
-    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='empresa' AND column_name='estado_nome') THEN
-        ALTER TABLE empresa ADD COLUMN estado_nome VARCHAR(100);
-    END IF;
-END \$\$;
+    FOR t IN (SELECT distinct substring(c.relname from -1 for (position('id_seq' in c.relname))) as tb_name,
+c.relname as sq_name FROM
+        pg_class c WHERE c.relkind = 'S' and (SELECT substring(c.relname from -1 for (position('id_seq' in c.relname))) in
+        (SELECT distinct table_name FROM information_schema.columns  WHERE table_schema='public')AND c.relname IN
+            (SELECT sequence_name  FROM information_schema.sequences where sequence_schema ='public'))) LOOP
+    
+    EXECUTE format('SELECT max(id) from %s',t.tb_name) INTO max_id;
+    EXECUTE format('SELECT last_value from %s',t.sq_name) INTO sch_lv;
 
--- Inserir/atualizar dados da empresa
-INSERT INTO empresa (endereco, bairro, cidade, estado, cep, lat, long, cnpj, razao_social, estado_nome)
-VALUES (
-    '$ENDERECO',
-    '$BAIRRO', 
-    '$CIDADE',
-    '$ESTADO',
-    '$CEP',
-    $LAT,
-    $LONG,
-    '$CNPJ',
-    '$RAZAO_SOCIAL',
-    '$ESTADO_NOME'
-)
-ON CONFLICT (id) DO UPDATE SET
-    endereco = EXCLUDED.endereco,
-    bairro = EXCLUDED.bairro,
-    cidade = EXCLUDED.cidade,
-    estado = EXCLUDED.estado,
-    cep = EXCLUDED.cep,
-    lat = EXCLUDED.lat,
-    long = EXCLUDED.long,
-    cnpj = EXCLUDED.cnpj,
-    razao_social = EXCLUDED.razao_social,
-    estado_nome = EXCLUDED.estado_nome;
+            IF (max_id <> sch_lv) THEN
 
--- Configurações específicas por ambiente
-EOF
+              RAISE NOTICE '--------------------------------------';
+              RAISE NOTICE 'Tabela - Sequence: %', t;
+              RAISE NOTICE 'TABLE(max(id)): %',max_id;
+              RAISE NOTICE 'SEQUENCE(last_value): %',sch_lv;
+              RAISE NOTICE '--------------------------------------';
+              EXECUTE format('select setval( ''%s'',(SELECT max(id) from %s ))', t.sq_name,t.tb_name);
+              RAISE NOTICE '< SEQUENCE CORRIGIDA >';
+            END IF;  
 
-# Adicionar configurações específicas do ambiente
-if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
-    cat >> "$OUTPUT_FILE" << EOF
+              RAISE NOTICE 'Tabela - Sequence: %', t;
 
--- Configurações específicas PTF
-UPDATE configuracao SET valor_texto = 'PRODUCAO' WHERE nomecampo = 'ambiente';
-UPDATE configuracao SET valor_texto = '$ENDERECO' WHERE nomecampo = 'endereco_empresa';
-UPDATE configuracao SET valor_texto = '$RAZAO_SOCIAL' WHERE nomecampo = 'razao_social';
+    END LOOP;    
+END;
+\$BODY\$
+LANGUAGE plpgsql VOLATILE
+COST 100;
 
-EOF
-else
-    cat >> "$OUTPUT_FILE" << EOF
+SELECT check_sequences();
+DROP FUNCTION check_sequences();
+SELECT max(id) FROM zona;
+SELECT last_value FROM zona_id_seq;
+SELECT setval('zona_id_seq', (SELECT max(id) FROM zona));
 
--- Configurações específicas PLN
-INSERT INTO configuracao_sistema (chave, valor) 
-VALUES ('ambiente', 'PLANNER')
-ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor;
-
-EOF
-fi
-
-# Finalizar transação
-cat >> "$OUTPUT_FILE" << EOF
-
-COMMIT;
-
--- Fim do arquivo start.sql
 EOF
 
 log_success "Arquivo start.sql gerado: $OUTPUT_FILE"

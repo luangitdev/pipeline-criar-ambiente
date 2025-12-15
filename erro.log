@@ -1,249 +1,41 @@
-16:16:51  Started by user infraestrutura
-16:16:51  Obtained Jenkinsfile from git https://github.com/luangitdev/pipeline-criar-ambiente.git
-16:16:52  [Pipeline] Start of Pipeline
-16:16:52  [Pipeline] node
-16:16:52  Running on Jenkins in /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE
-16:16:52  [Pipeline] {
-16:16:52  [Pipeline] stage
-16:16:52  [Pipeline] { (Declarative: Checkout SCM)
-16:16:52  [Pipeline] checkout
-16:16:52  Selected Git installation does not exist. Using Default
-16:16:52  The recommended git tool is: NONE
-16:16:52  using credential github-credentials-luan
-16:16:52   > git rev-parse --resolve-git-dir /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/.git # timeout=10
-16:16:52  Fetching changes from the remote Git repository
-16:16:52   > git config remote.origin.url https://github.com/luangitdev/pipeline-criar-ambiente.git # timeout=10
-16:16:52  Fetching upstream changes from https://github.com/luangitdev/pipeline-criar-ambiente.git
-16:16:52   > git --version # timeout=10
-16:16:52   > git --version # 'git version 2.39.5'
-16:16:52  using GIT_ASKPASS to set credentials Credenciais da conta github (Luan)
-16:16:52   > git fetch --tags --force --progress -- https://github.com/luangitdev/pipeline-criar-ambiente.git +refs/heads/*:refs/remotes/origin/* # timeout=10
-16:16:52   > git rev-parse refs/remotes/origin/main^{commit} # timeout=10
-16:16:52  Checking out Revision 4558386b24bc15f9209630f9cbd1b5ca04e6238b (refs/remotes/origin/main)
-16:16:52   > git config core.sparsecheckout # timeout=10
-16:16:52   > git checkout -f 4558386b24bc15f9209630f9cbd1b5ca04e6238b # timeout=10
-16:16:52  Commit message: "debug: Adiciona verificação detalhada das credenciais Jenkins"
-16:16:52   > git rev-list --no-walk 6caa363c36311af0d990adc51ee239d89266f825 # timeout=10
-16:16:52  [Pipeline] }
-16:16:52  [Pipeline] // stage
-16:16:53  [Pipeline] withEnv
-16:16:53  [Pipeline] {
-16:16:53  [Pipeline] withEnv
-16:16:53  [Pipeline] {
-16:16:53  [Pipeline] stage
-16:16:53  [Pipeline] { (🔍 Validação de Parâmetros)
-16:16:53  [Pipeline] script
-16:16:53  [Pipeline] {
-16:16:53  [Pipeline] echo
-16:16:53  🚀 ===== PIPELINE CRIAR AMBIENTE =====
-16:16:53  [Pipeline] echo
-16:16:53  📋 Parâmetros recebidos:
-16:16:53  [Pipeline] echo
-16:16:53     - Tipo Ambiente: ptf
-16:16:53  [Pipeline] echo
-16:16:53     - Servidor: gcp01
-16:16:53  [Pipeline] echo
-16:16:53     - Nome Banco: ptf_base_teste
-16:16:53  [Pipeline] echo
-16:16:53     - Versão: 15.13.1.0-1
-16:16:53  [Pipeline] echo
-16:16:53     - Criar Banco: true
-16:16:53  [Pipeline] echo
-16:16:53     - Deploy App: false
-16:16:53  [Pipeline] echo
-16:16:53  =======================================
-16:16:53  [Pipeline] sh
-16:16:53  + /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/scripts/get_db_host.sh gcp01
-16:16:53  [Pipeline] echo
-16:16:53  ✅ Validação concluída. DB Host: 10.200.0.19
-16:16:53  [Pipeline] }
-16:16:53  [Pipeline] // script
-16:16:53  [Pipeline] }
-16:16:53  [Pipeline] // stage
-16:16:53  [Pipeline] stage
-16:16:53  [Pipeline] { (📁 Preparação do Ambiente)
-16:16:53  [Pipeline] script
-16:16:53  [Pipeline] {
-16:16:53  [Pipeline] echo
-16:16:53  🔧 Preparando ambiente de trabalho...
-16:16:53  [Pipeline] sh
-16:16:54  + mkdir -p /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/temp
-16:16:54  + mkdir -p /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/logs
-16:16:54  + chmod +x /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/scripts/create_database.sh /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/scripts/database_operations.sh /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/scripts/deploy_application.sh /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/scripts/generate_start_sql.sh /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/scripts/get_db_host.sh /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/scripts/verify_database.sh /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/scripts/verify_deployment.sh
-16:16:54  [Pipeline] sh
-16:16:54  + [ -f /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/dados/ptf/dados.txt ]
-16:16:54  + cp /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/dados/ptf/dados.txt /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/temp/
-16:16:54  + echo ✅ Dados do ambiente ptf copiados
-16:16:54  ✅ Dados do ambiente ptf copiados
-16:16:54  [Pipeline] }
-16:16:54  [Pipeline] // script
-16:16:54  [Pipeline] }
-16:16:54  [Pipeline] // stage
-16:16:54  [Pipeline] stage
-16:16:54  [Pipeline] { (🗄️ Criação do Banco de Dados)
-16:16:54  [Pipeline] script
-16:16:54  [Pipeline] {
-16:16:54  [Pipeline] echo
-16:16:54  🗄️ Iniciando criação do banco de dados...
-16:16:54  [Pipeline] withCredentials
-16:16:54  Masking supported pattern matches of $BASTION_HOST or $BASTION_USER or $DB_USER or $DB_PASSWORD or $SSH_KEY or $SSH_PASSPHRASE
-16:16:54  [Pipeline] {
-16:16:54  [Pipeline] sh
-16:16:54  Warning: A secret was passed to "sh" using Groovy String interpolation, which is insecure.
-16:16:54  		 Affected argument(s) used the following variable(s): [DB_USER, DB_PASSWORD]
-16:16:54  		 See https://jenkins.io/redirect/groovy-string-interpolation for details.
-16:16:55  + cat
-16:16:55  + chmod +x /tmp/ssh-add-script-94672.sh
-16:16:55  + ssh-agent -s
-16:16:55  + eval SSH_AUTH_SOCK=/tmp/ssh-FF3GB0HlQwrA/agent.94676; export SSH_AUTH_SOCK; SSH_AGENT_PID=94677; export SSH_AGENT_PID; echo Agent pid 94677;
-16:16:55  + SSH_AUTH_SOCK=/tmp/ssh-FF3GB0HlQwrA/agent.94676
-16:16:55  + export SSH_AUTH_SOCK
-16:16:55  + SSH_AGENT_PID=94677
-16:16:55  + export SSH_AGENT_PID
-16:16:55  + echo Agent pid 94677
-16:16:55  Agent pid 94677
-16:16:55  + DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-94672.sh ssh-add ****
-16:16:55  Identity added: **** (****)
-16:16:55  + ssh -o StrictHostKeyChecking=no ****@**** mkdir -p /tmp/pipeline-17
-16:16:55  + scp -o StrictHostKeyChecking=no -r /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/scripts/ ****@****:/tmp/pipeline-17/
-16:16:55  + scp -o StrictHostKeyChecking=no -r /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/sql/ ****@****:/tmp/pipeline-17/
-16:16:56  + scp -o StrictHostKeyChecking=no -r /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/dados/ ****@****:/tmp/pipeline-17/
-16:16:56  + ssh -o StrictHostKeyChecking=no ****@****
-16:16:56  Pseudo-terminal will not be allocated because stdin is not a terminal.
-16:16:57  Linux routing-apl-no 6.1.0-23-cloud-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.99-1 (2024-07-15) x86_64
-16:16:57  
-16:16:57  The programs included with the Debian GNU/Linux system are free software;
-16:16:57  the exact distribution terms for each program are described in the
-16:16:57  individual files in /usr/share/doc/*/copyright.
-16:16:57  
-16:16:57  Debian GNU/Linux comes with ABSOLUTELY NO WARRANTY, to the extent
-16:16:57  permitted by applicable law.
-16:16:57  === DEBUG - Variáveis do Pipeline ===
-16:16:57  TIPO_AMBIENTE: ptf
-16:16:57  SERVIDOR: gcp01
-16:16:57  NOME_BANCO: ptf_base_teste
-16:16:57  VERSAO_DESEJADA: 15.13.1.0-1
-16:16:57  DB_HOST: 10.200.0.19
-16:16:57  DB_PORT: 5432
-16:16:57  DB_USER: ****
-16:16:57  DB_PASSWORD: [MASKED]
-16:16:57  WORKSPACE: /tmp/pipeline-17
-16:16:57  
-16:16:57  === DEBUG CREDENCIAIS ===
-16:16:57  DB_USER vazio? NÃO - OK
-16:16:57  DB_PASSWORD vazio? NÃO - OK
-16:16:57  Tamanho DB_USER: 0
-16:16:57  Tamanho DB_PASSWORD: 0
-16:16:57  =========================
-16:16:57  =================================
-16:16:57  [0;34m[2025-12-15 19:16:57][0m 🔍 DEBUG CREDENCIAIS:
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - DB_USER: **** (tamanho: 10)
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - DB_PASSWORD: [TAMANHO: 12] [PRIMEIROS 3 CHARS: Fin***]
-16:16:57  [0;34m[2025-12-15 19:16:57][0m 🔧 Senha codificada em base64 para evitar expansão de caracteres especiais
-16:16:57  [0;34m[2025-12-15 19:16:57][0m 🚀 INICIANDO CRIAÇÃO DO BANCO DE DADOS
-16:16:57  [0;34m[2025-12-15 19:16:57][0m 📋 Configuração:
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - Ambiente: ptf
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - Servidor: gcp01
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - Banco: ptf_base_teste
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - Host: 10.200.0.19:5432
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - Versão: 15.13.1.0-1
-16:16:57  [0;34m[2025-12-15 19:16:57][0m 📋 Template obrigatório: ptf_banco_limpo_v15_12_0_3_43
-16:16:57  [0;34m[2025-12-15 19:16:57][0m 🔗 Configuração de conexão:
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - Servidor destino: 10.200.0.19:5432
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - Template source: 10.200.0.19:5432 (GCP01)
-16:16:57  [0;34m[2025-12-15 19:16:57][0m 🔧 Verificando ambiente de execução...
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - Usuário: ****
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - Sistema: Linux routing-apl-no 6.1.0-23-cloud-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.1.99-1 (2024-07-15) x86_64 GNU/Linux
-16:16:57  [0;34m[2025-12-15 19:16:57][0m    - PostgreSQL client: /usr/bin/psql
-16:16:57  [0;32m[2025-12-15 19:16:57] ✅ PostgreSQL client encontrado: /usr/bin/psql[0m
-16:16:57  [0;34m[2025-12-15 19:16:57][0m 🔍 Testando conexão com o servidor de banco...
-16:16:57  [0;34m[2025-12-15 19:16:57][0m 🔧 Comando: psql -h 10.200.0.19 -p 5432 -U **** -d ptf_banco_limpo_v15_12_0_3_43 -c "SELECT 1;"
-16:16:57  [0;31m[2025-12-15 19:16:57] ❌ Falha ao conectar com o servidor PostgreSQL em 10.200.0.19:5432[0m
-16:16:57  [0;31m[2025-12-15 19:16:57] ❌ Erro específico: psql: error: connection to server at "10.200.0.19", port 5432 failed: FATAL:  password authentication failed for user "****"
-16:16:57  connection to server at "10.200.0.19", port 5432 failed: FATAL:  password authentication failed for user "****"[0m
-16:16:57  [0;31m[2025-12-15 19:16:57] ❌ [0m
-16:16:57  [0;31m[2025-12-15 19:16:57] ❌ Verifique se:[0m
-16:16:57  [0;31m[2025-12-15 19:16:57] ❌   1. O servidor PostgreSQL está rodando[0m
-16:16:57  [0;31m[2025-12-15 19:16:57] ❌   2. O bastion host tem acesso à rede privada[0m
-16:16:57  [0;31m[2025-12-15 19:16:57] ❌   3. As credenciais estão corretas (usuário: ****)[0m
-16:16:57  [0;31m[2025-12-15 19:16:57] ❌   4. A porta 5432 está aberta[0m
-16:16:57  [0;31m[2025-12-15 19:16:57] ❌   5. O template 'ptf_banco_limpo_v15_12_0_3_43' existe[0m
-16:16:57  ❌ ERRO: Falha na criação do banco de dados!
-16:16:57  [Pipeline] error
-16:16:57  [Pipeline] }
-16:16:57  [Pipeline] // withCredentials
-16:16:57  [Pipeline] }
-16:16:57  [Pipeline] // script
-16:16:57  [Pipeline] }
-16:16:57  [Pipeline] // stage
-16:16:57  [Pipeline] stage
-16:16:57  [Pipeline] { (🚀 Deploy da Aplicação)
-16:16:57  Stage "🚀 Deploy da Aplicação" skipped due to earlier failure(s)
-16:16:57  [Pipeline] getContext
-16:16:57  [Pipeline] }
-16:16:57  [Pipeline] // stage
-16:16:57  [Pipeline] stage
-16:16:57  [Pipeline] { (✅ Verificação Final)
-16:16:57  Stage "✅ Verificação Final" skipped due to earlier failure(s)
-16:16:57  [Pipeline] getContext
-16:16:57  [Pipeline] }
-16:16:57  [Pipeline] // stage
-16:16:57  [Pipeline] stage
-16:16:57  [Pipeline] { (Declarative: Post Actions)
-16:16:57  [Pipeline] script
-16:16:58  [Pipeline] {
-16:16:58  [Pipeline] echo
-16:16:58  🧹 Executando limpeza...
-16:16:58  [Pipeline] fileExists
-16:16:58  [Pipeline] archiveArtifacts
-16:16:58  Archiving artifacts
-16:16:58  [Pipeline] sh
-16:16:58  + rm -rf /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE/temp
-16:16:58  + find /var/jenkins_home/workspace/PTF-CRIAR-AMBIENTE -name *.tmp -delete
-16:16:58  [Pipeline] withCredentials
-16:16:58  Masking supported pattern matches of $BASTION_HOST or $BASTION_USER or $SSH_KEY or $SSH_PASSPHRASE
-16:16:58  [Pipeline] {
-16:16:58  [Pipeline] sh
-16:16:58  + cat
-16:16:58  + chmod +x /tmp/ssh-add-script-94720.sh
-16:16:58  + ssh-agent -s
-16:16:58  + eval SSH_AUTH_SOCK=/tmp/ssh-zZdOBpAOQI9a/agent.94725; export SSH_AUTH_SOCK; SSH_AGENT_PID=94726; export SSH_AGENT_PID; echo Agent pid 94726;
-16:16:58  + SSH_AUTH_SOCK=/tmp/ssh-zZdOBpAOQI9a/agent.94725
-16:16:58  + export SSH_AUTH_SOCK
-16:16:58  + SSH_AGENT_PID=94726
-16:16:58  + export SSH_AGENT_PID
-16:16:58  + echo Agent pid 94726
-16:16:58  Agent pid 94726
-16:16:58  + DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-94720.sh ssh-add ****
-16:16:58  Identity added: **** (****)
-16:16:58  + ssh -o StrictHostKeyChecking=no ****@**** rm -rf /tmp/pipeline-17
-16:16:58  + ssh-agent -k
-16:16:58  unset SSH_AUTH_SOCK;
-16:16:58  unset SSH_AGENT_PID;
-16:16:58  echo Agent pid 94726 killed;
-16:16:58  + rm -f /tmp/ssh-add-script-94720.sh
-16:16:58  [Pipeline] }
-16:16:59  [Pipeline] // withCredentials
-16:16:59  [Pipeline] }
-16:16:59  [Pipeline] // script
-16:16:59  [Pipeline] echo
-16:16:59  
-16:16:59  ❌ ===== PIPELINE FALHOU! =====
-16:16:59  📋 Verifique os logs para mais detalhes.
-16:16:59  Parâmetros utilizados:
-16:16:59     - Ambiente: ptf
-16:16:59     - Servidor: gcp01
-16:16:59     - Banco: ptf_base_teste
-16:16:59  ==============================
-16:16:59              
-16:16:59  [Pipeline] }
-16:16:59  [Pipeline] // stage
-16:16:59  [Pipeline] }
-16:16:59  [Pipeline] // withEnv
-16:16:59  [Pipeline] }
-16:16:59  [Pipeline] // withEnv
-16:16:59  [Pipeline] }
-16:16:59  [Pipeline] // node
-16:16:59  [Pipeline] End of Pipeline
-16:16:59  ERROR: ❌ Falha na criação do banco de dados! Exit code: 1
-16:16:59  Finished: FAILURE
+17:03:30  [0;32m[2025-12-15 20:03:30] ✅ Banco ptf_base_teste criado com dados do template![0m
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 📋 Processando dados do ambiente...
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 🔄 Gerando start.sql personalizado...
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 📄 Processando dados de: /tmp/pipeline-20/dados/ptf/dados.txt
+17:03:30  [0;32m[2025-12-15 20:03:30] ✅ Dados processados com sucesso[0m
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 📝 Gerando arquivo: /tmp/pipeline-20/temp/start_ptf.sql
+17:03:30  [0;32m[2025-12-15 20:03:30] ✅ Arquivo start.sql gerado: /tmp/pipeline-20/temp/start_ptf.sql[0m
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 📊 Dados utilizados:
+17:03:30  [0;34m[2025-12-15 20:03:30][0m    - Endereço: Rua Capitão Luis Ramos, 200
+17:03:30  [0;34m[2025-12-15 20:03:30][0m    - Cidade: São Paulo
+17:03:30  [0;34m[2025-12-15 20:03:30][0m    - Estado: SP
+17:03:30  [0;34m[2025-12-15 20:03:30][0m    - CNPJ: 09645368000181
+17:03:30  [0;34m[2025-12-15 20:03:30][0m    - Razão Social: N/A
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 🔍 DEBUG: Verificando arquivo start.sql em: /tmp/pipeline-20/temp/start_ptf.sql
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 🔧 Executando configuração inicial...
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 📄 Executando: start_ptf.sql
+17:03:30  psql:/tmp/pipeline-20/temp/start_ptf.sql:32: ERROR:  column "endereco" of relation "empresa" does not exist
+17:03:30  LINE 1: INSERT INTO empresa (endereco, bairro, cidade, estado, cep, ...
+17:03:30                               ^
+17:03:30  psql:/tmp/pipeline-20/temp/start_ptf.sql:37: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+17:03:30  psql:/tmp/pipeline-20/temp/start_ptf.sql:38: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+17:03:30  psql:/tmp/pipeline-20/temp/start_ptf.sql:39: ERROR:  current transaction is aborted, commands ignored until end of transaction block
+17:03:30  [0;32m[2025-12-15 20:03:30] ✅ Configuração inicial aplicada[0m
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 🔍 DEBUG: Verificando arquivo config.sql em: /tmp/pipeline-20/sql/ptf/config.sql
+17:03:30  [0;34m[2025-12-15 20:03:30][0m ⚙️ Executando scripts de configuração...
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 📄 Executando: config.sql
+17:03:30  [0;32m[2025-12-15 20:03:30] ✅ Scripts de configuração aplicados[0m
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 📊 Verificando versão atual do banco...
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 📋 Versão atual: 15.12.0.3-43
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 🔄 Executando updates necessários...
+17:03:30  [0;34m[2025-12-15 20:03:30][0m 🔍 DEBUG: Verificando diretório updates em: /tmp/pipeline-20/sql/ptf/updates
+17:03:30  ./scripts/create_database.sh: line 336: syntax error in conditional expression
+17:03:30  ✅ Criação do banco concluída com sucesso!
+17:03:30  + SSH_EXIT_CODE=0
+17:03:30  + ssh-agent -k
+17:03:31  unset SSH_AUTH_SOCK;
+17:03:31  unset SSH_AGENT_PID;
+17:03:31  echo Agent pid 95480 killed;
+17:03:31  + rm -f /tmp/ssh-add-script-95475.sh
+17:03:31  + [ 0 -ne 0 ]
+17:03:31  [Pipeline] echo
