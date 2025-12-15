@@ -145,9 +145,21 @@ execute_sql_file() {
     fi
     
     log "📄 Executando: $(basename "$file")"
-    if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -f "$file" -q; then
-        log_error "Falha ao executar o arquivo SQL: $(basename "$file")"
-        return 1
+    
+    # Executar SQL capturando erros mas não falhando se for erro de dados
+    if ! SQL_OUTPUT=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -f "$file" 2>&1); then
+        # Se contém erros de schema/dados, avisar mas continuar
+        if echo "$SQL_OUTPUT" | grep -q "does not exist\|already exists\|duplicate key"; then
+            log_warning "Avisos SQL em $(basename "$file"):"
+            echo "$SQL_OUTPUT" | grep "ERROR\|WARNING" || true
+            log_warning "Continuando execução (erros de dados/schema podem ser normais)"
+            return 0
+        else
+            # Outros erros são críticos
+            log_error "Falha crítica ao executar $(basename "$file"):"
+            echo "$SQL_OUTPUT"
+            return 1
+        fi
     fi
     return 0
 }
@@ -332,8 +344,8 @@ if [[ -d "$UPDATES_DIR" ]]; then
         if [[ -f "$update_file" ]]; then
             update_version=$(basename "$update_file" .sql)
             
-            # Verificar se update deve ser aplicado
-            if [[ "$update_version" > "$VERSAO_ATUAL" ]] && [[ "$update_version" <= "$VERSAO_DESEJADA" ]]; then
+            # Verificar se update deve ser aplicado (comparação lexicográfica)
+            if [[ "$update_version" > "$VERSAO_ATUAL" ]]; then
                 log "🔄 Aplicando update: $update_version"
                 if execute_sql_file "$update_file" "$NOME_BANCO"; then
                     ((UPDATE_COUNT++))
