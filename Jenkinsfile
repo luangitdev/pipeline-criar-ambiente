@@ -169,6 +169,19 @@ EOF
 cd /tmp/pipeline-${BUILD_NUMBER}
 chmod +x scripts/*.sh
 
+# Debug - mostrar variáveis
+echo "=== DEBUG - Variáveis do Pipeline ==="
+echo "TIPO_AMBIENTE: ${params.TIPO_AMBIENTE}"
+echo "SERVIDOR: ${params.SERVIDOR}"
+echo "NOME_BANCO: ${params.NOME_BANCO}"
+echo "VERSAO_DESEJADA: ${params.VERSAO_DESEJADA}"
+echo "DB_HOST: ${env.DB_HOST}"
+echo "DB_PORT: ${env.DB_PORT}"
+echo "DB_USER: ${DB_USER}"
+echo "DB_PASSWORD: [MASKED]"
+echo "WORKSPACE: /tmp/pipeline-${BUILD_NUMBER}"
+echo "================================="
+
 # Executar criação do banco
 ./scripts/create_database.sh \\
     --tipo-ambiente "${params.TIPO_AMBIENTE}" \\
