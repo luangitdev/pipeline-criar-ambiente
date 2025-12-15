@@ -75,7 +75,8 @@ OUTPUT_FILE="$OUTPUT_DIR/start_${TIPO_AMBIENTE}.sql"
 log "📝 Gerando arquivo: $OUTPUT_FILE"
 
 # Template SQL seguindo exatamente o padrão do Ansible
-cat > "$OUTPUT_FILE" << EOF
+if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
+    cat > "$OUTPUT_FILE" << EOF
 -- DADOS INICIAIS GERADOS DINAMICAMENTE PARA AMBIENTE PTF
 -- INSERT na tabela 'empresa'
 INSERT INTO empresa(cnpj, nome, codigocontrol, cobranca, valorunitario, bandeira, projeto, identificador, produto)
@@ -104,6 +105,33 @@ VALUES ('$BAIRRO', '$CEP', '0', '$ENDERECO', $LAT, $LONG, '$RAZAO_SOCIAL', (SELE
 
 -- UPDATE na tabela 'centrodistribuicao'
 UPDATE centrodistribuicao SET id=2 where id!=1;
+EOF
+
+else
+    # Template para PLN
+    cat > "$OUTPUT_FILE" << EOF
+-- DADOS INICIAIS GERADOS DINAMICAMENTE PARA AMBIENTE PLN
+INSERT INTO empresa(id, cnpj, nome, produto) 
+VALUES(1, '$CNPJ', '$RAZAO_SOCIAL', 'PLANNER');
+
+INSERT INTO estado(id, nome, sigla) 
+VALUES(1, '$ESTADO_NOME', '$ESTADO');
+
+INSERT INTO cidade(id, nome, estado_id) 
+VALUES(1, '$CIDADE', 1);
+
+INSERT INTO maparoutes(id, descricao, nome, referencia) 
+VALUES(1, '$ESTADO_NOME', '$ESTADO', 1);
+
+INSERT INTO centrodistribuicao(id, nome, endereco, bairro, cep, latitude, longitude, id_empresa, id_cidade, identificador, mapa_id)
+VALUES(1, '$RAZAO_SOCIAL', '$ENDERECO', '$BAIRRO', '$CEP', $LAT, $LONG, 1, 1, '1', 1);
+EOF
+
+fi
+
+# Adicionar função de verificação de sequences (apenas para PTF)
+if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
+    cat >> "$OUTPUT_FILE" << EOF
 
 -- Configurações baseadas no servidor
 -- Função para checar as sequências
@@ -149,8 +177,8 @@ DROP FUNCTION check_sequences();
 SELECT max(id) FROM zona;
 SELECT last_value FROM zona_id_seq;
 SELECT setval('zona_id_seq', (SELECT max(id) FROM zona));
-
 EOF
+fi
 
 log_success "Arquivo start.sql gerado: $OUTPUT_FILE"
 log "📊 Dados utilizados:"
