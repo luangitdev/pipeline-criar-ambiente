@@ -107,7 +107,10 @@ else
     TEMPLATE_DB="ptf_planner_banco_limpo_9_0_0_0_0"
 fi
 
-log "📋 Template: $TEMPLATE_DB"
+# Permitir override via variável de ambiente (se necessário)
+TEMPLATE_DB="${TEMPLATE_DB_OVERRIDE:-$TEMPLATE_DB}"
+
+log "📋 Template obrigatório: $TEMPLATE_DB"
 
 # Função para executar SQL
 execute_sql() {
@@ -159,8 +162,19 @@ if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U
 fi
 log_success "Conexão com o servidor estabelecida com sucesso!"
 
-# 2. Criar banco de dados
-log "🗄️ Criando banco de dados..."
+# 2. Verificar se template existe (obrigatório)
+log "🔍 Verificando se template existe: $TEMPLATE_DB"
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$TEMPLATE_DB"; then
+    log_error "❌ Template '$TEMPLATE_DB' não encontrado no servidor $EFFECTIVE_HOST:$EFFECTIVE_PORT"
+    log_error "📋 Bancos disponíveis no servidor:"
+    PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -v "^$" | sort | head -20
+    log_error "💡 Certifique-se de que o template '$TEMPLATE_DB' existe no servidor de destino"
+    exit 1
+fi
+log_success "Template $TEMPLATE_DB encontrado!"
+
+# 3. Criar banco de dados com template
+log "🗄️ Criando banco com template: $TEMPLATE_DB"
 if execute_sql "CREATE DATABASE \"$NOME_BANCO\" WITH TEMPLATE \"$TEMPLATE_DB\";" 2>/dev/null; then
     log_success "Banco $NOME_BANCO criado com sucesso!"
 else
@@ -169,6 +183,7 @@ else
         log_warning "Banco $NOME_BANCO já existe, continuando..."
     else
         log_error "Falha ao criar o banco $NOME_BANCO"
+        log_error "Verifique se o usuário tem permissões para criar bancos"
         exit 1
     fi
 fi
