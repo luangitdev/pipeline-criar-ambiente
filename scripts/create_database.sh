@@ -145,7 +145,7 @@ execute_sql_file() {
     fi
     
     log "📄 Executando: $(basename "$file")"
-    if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -f "$file"; then
+    if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -f "$file" -q; then
         log_error "Falha ao executar o arquivo SQL: $(basename "$file")"
         return 1
     fi
@@ -274,20 +274,38 @@ fi
 
 # 3. Executar configuração inicial (start.sql)
 START_SQL="$WORKSPACE/temp/start_${TIPO_AMBIENTE}.sql"
+log "🔍 DEBUG: Verificando arquivo start.sql em: $START_SQL"
 if [[ -f "$START_SQL" ]]; then
     log "🔧 Executando configuração inicial..."
-    execute_sql_file "$START_SQL" "$NOME_BANCO"
-    log_success "Configuração inicial aplicada"
+    if execute_sql_file "$START_SQL" "$NOME_BANCO"; then
+        log_success "Configuração inicial aplicada"
+    else
+        log_error "Falha ao aplicar configuração inicial"
+        exit 1
+    fi
 else
-    log_warning "Arquivo start.sql não encontrado"
+    log_warning "Arquivo start.sql não encontrado: $START_SQL"
+    log "🔍 Listando conteúdo de temp/:"
+    ls -la "$WORKSPACE/temp/" || log_warning "Diretório temp não existe"
 fi
 
 # 4. Executar scripts de configuração (config.sql)
 CONFIG_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/config.sql"
+log "🔍 DEBUG: Verificando arquivo config.sql em: $CONFIG_SQL"
 if [[ -f "$CONFIG_SQL" && "$TIPO_AMBIENTE" != "pln" ]]; then
     log "⚙️ Executando scripts de configuração..."
-    execute_sql_file "$CONFIG_SQL" "$NOME_BANCO"
-    log_success "Scripts de configuração aplicados"
+    if execute_sql_file "$CONFIG_SQL" "$NOME_BANCO"; then
+        log_success "Scripts de configuração aplicados"
+    else
+        log_error "Falha ao aplicar configuração"
+        exit 1
+    fi
+else
+    if [[ "$TIPO_AMBIENTE" == "pln" ]]; then
+        log "ℹ️ Config.sql ignorado para ambiente PLN"
+    else
+        log_warning "Arquivo config.sql não encontrado: $CONFIG_SQL"
+    fi
 fi
 
 # 5. Obter versão atual do banco
@@ -303,7 +321,10 @@ log "📋 Versão atual: $VERSAO_ATUAL"
 # 6. Executar updates necessários
 log "🔄 Executando updates necessários..."
 UPDATES_DIR="$WORKSPACE/sql/$TIPO_AMBIENTE/updates"
+log "🔍 DEBUG: Verificando diretório updates em: $UPDATES_DIR"
 if [[ -d "$UPDATES_DIR" ]]; then
+    log "📁 Arquivos encontrados em updates:"
+    ls -la "$UPDATES_DIR/" || log_warning "Erro ao listar updates"
     UPDATE_COUNT=0
     
     # Ordenar arquivos por versão
@@ -332,6 +353,7 @@ fi
 
 # 7. Executar credenciais
 CREDENTIALS_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/credentials.sql"
+log "🔍 DEBUG: Verificando arquivo credentials.sql em: $CREDENTIALS_SQL"
 if [[ -f "$CREDENTIALS_SQL" ]]; then
     log "🔐 Aplicando credenciais..."
     if execute_sql_file "$CREDENTIALS_SQL" "$NOME_BANCO"; then
