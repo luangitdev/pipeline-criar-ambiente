@@ -43,7 +43,19 @@ ESTADO_NOME="N/A"
 if [[ -f "$DADOS_FILE" ]]; then
     log "📄 Processando dados de: $DADOS_FILE"
     
-    while IFS=':' read -r key value; do
+    # Adicionar quebra de linha ao final se não existir para garantir que última linha seja lida
+    temp_file="/tmp/dados_temp_$$"
+    if [ ! -s "$DADOS_FILE" ] || [ "$(tail -c1 "$DADOS_FILE" | wc -l)" -eq 0 ]; then
+        cp "$DADOS_FILE" "$temp_file"
+        echo >> "$temp_file"
+    else
+        cp "$DADOS_FILE" "$temp_file"
+    fi
+    
+    while IFS=':' read -r key value || [ -n "$key" ]; do
+        # Ignorar linhas vazias
+        [[ -z "$key" ]] && continue
+        
         # Remover espaços e converter para minúsculo
         key=$(echo "$key" | xargs | tr '[:upper:]' '[:lower:]' | sed 's/ã/a/g; s/ç/c/g; s/ /_/g')
         value=$(echo "$value" | xargs)
@@ -65,7 +77,10 @@ if [[ -f "$DADOS_FILE" ]]; then
             "cnpj") CNPJ="$value" ;;
             "razao_social") RAZAO_SOCIAL="$value" ;;
         esac
-    done < "$DADOS_FILE"
+    done < "$temp_file"
+    
+    # Limpar arquivo temporário
+    rm -f "$temp_file"
     
     log_success "Dados processados com sucesso"
     
