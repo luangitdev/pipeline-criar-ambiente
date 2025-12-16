@@ -84,7 +84,7 @@ log_success "Conexão com o servidor estabelecida"
 
 # Verificar se banco existe
 log "📄 Verificando existência do banco..."
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -lqt | cut -d \| -f 1 | grep -qw "$NOME_BANCO"; then
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d postgres -t -c "SELECT 1 FROM pg_database WHERE datname='$NOME_BANCO';" | grep -q 1; then
     log_error "Banco $NOME_BANCO não encontrado!"
     exit 1
 fi

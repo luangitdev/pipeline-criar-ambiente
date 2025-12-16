@@ -326,7 +326,6 @@ fi
 
 # 3. Executar configuração inicial (start.sql)
 START_SQL="$WORKSPACE/temp/start_${TIPO_AMBIENTE}.sql"
-log "🔍 DEBUG: Verificando arquivo start.sql em: $START_SQL"
 if [[ -f "$START_SQL" ]]; then
     log "🔧 Executando configuração inicial..."
     if execute_sql_file "$START_SQL" "$NOME_BANCO"; then
@@ -343,7 +342,6 @@ fi
 
 # 4. Executar scripts de configuração (config.sql)
 CONFIG_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/config.sql"
-log "🔍 DEBUG: Verificando arquivo config.sql em: $CONFIG_SQL"
 if [[ -f "$CONFIG_SQL" && "$TIPO_AMBIENTE" != "pln" ]]; then
     log "⚙️ Executando scripts de configuração..."
     if execute_sql_file "$CONFIG_SQL" "$NOME_BANCO"; then
@@ -373,7 +371,6 @@ log "📋 Versão atual: $VERSAO_ATUAL"
 # 6. Executar updates necessários
 log "🔄 Executando updates necessários..."
 UPDATES_DIR="$WORKSPACE/sql/$TIPO_AMBIENTE/updates"
-log "🔍 DEBUG: Verificando diretório updates em: $UPDATES_DIR"
 if [[ -d "$UPDATES_DIR" ]]; then
     log "📁 Arquivos encontrados em updates:"
     ls -la "$UPDATES_DIR/" || log_warning "Erro ao listar updates"
@@ -413,7 +410,6 @@ fi
 
 # 7. Executar credenciais
 CREDENTIALS_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/credentials.sql"
-log "🔍 DEBUG: Verificando arquivo credentials.sql em: $CREDENTIALS_SQL"
 if [[ -f "$CREDENTIALS_SQL" ]]; then
     log "🔐 Aplicando credenciais..."
     if execute_sql_file "$CREDENTIALS_SQL" "$NOME_BANCO"; then
