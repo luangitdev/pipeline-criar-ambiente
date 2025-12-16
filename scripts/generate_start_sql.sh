@@ -48,6 +48,9 @@ if [[ -f "$DADOS_FILE" ]]; then
         key=$(echo "$key" | xargs | tr '[:upper:]' '[:lower:]' | sed 's/ã/a/g; s/ç/c/g; s/ /_/g')
         value=$(echo "$value" | xargs)
         
+        # Debug - mostrar o que foi lido
+        log "🔍 DEBUG: key='$key' value='$value'"
+        
         case "$key" in
             "endereco") ENDERECO="$value" ;;
             "bairro") BAIRRO="$value" ;;
@@ -60,11 +63,23 @@ if [[ -f "$DADOS_FILE" ]]; then
             "lat"|"latitude") LAT="$value" ;;
             "long"|"longitude") LONG="$value" ;;
             "cnpj") CNPJ="$value" ;;
-            "razao_social"|"razao social"|"razao_social") RAZAO_SOCIAL="$value" ;;
+            "razao_social") RAZAO_SOCIAL="$value" ;;
         esac
     done < "$DADOS_FILE"
     
     log_success "Dados processados com sucesso"
+    
+    # Debug - mostrar valores finais
+    log "📋 DEBUG: Valores finais processados:"
+    log "   - ENDERECO: '$ENDERECO'"
+    log "   - BAIRRO: '$BAIRRO'" 
+    log "   - CIDADE: '$CIDADE'"
+    log "   - ESTADO: '$ESTADO'"
+    log "   - CEP: '$CEP'"
+    log "   - LAT: '$LAT'"
+    log "   - LONG: '$LONG'"
+    log "   - CNPJ: '$CNPJ'"
+    log "   - RAZAO_SOCIAL: '$RAZAO_SOCIAL'"
 else
     log "⚠️ Arquivo de dados não encontrado, usando valores padrão"
 fi

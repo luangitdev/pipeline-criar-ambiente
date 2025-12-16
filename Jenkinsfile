@@ -202,6 +202,18 @@ EOF
 cd /tmp/pipeline-${BUILD_NUMBER}
 chmod +x scripts/*.sh
 
+# Debug - verificar arquivos copiados
+echo "=== DEBUG - Arquivos no bastion ==="
+ls -la temp/ 2>/dev/null || echo "Diretório temp não existe"
+if [ -f "temp/dados.txt" ]; then
+    echo "📄 Conteúdo do temp/dados.txt:"
+    cat temp/dados.txt
+    echo "--- FIM DO ARQUIVO ---"
+else
+    echo "❌ Arquivo temp/dados.txt não encontrado"
+fi
+echo "================================="
+
 # Debug - mostrar variáveis
 echo "=== DEBUG - Variáveis do Pipeline ==="
 echo "TIPO_AMBIENTE: ${params.TIPO_AMBIENTE}"
