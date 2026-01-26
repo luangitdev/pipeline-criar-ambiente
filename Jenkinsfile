@@ -4,12 +4,12 @@ pipeline {
     parameters {
         choice(
             name: 'TIPO_AMBIENTE',
-            choices: ['ptf', 'pln'],
+            choices: ['PTF', 'PLN'],
             description: 'Tipo do ambiente (PTF ou PLN)'
         )
         choice(
             name: 'SERVIDOR',
-            choices: ['gcp01', 'gcp02', 'gcp03', 'gcp-pln'],
+            choices: ['GCP01', 'GCP02', 'GCP03', 'GCP-PLN'],
             description: 'Servidor de destino'
         )
         string(
