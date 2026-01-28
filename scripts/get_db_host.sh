@@ -5,7 +5,15 @@
 
 set -euo pipefail
 
-SERVIDOR="$1"
+SERVIDOR="${1:-}"
+
+if [[ -z "$SERVIDOR" ]]; then
+    echo "❌ Erro: Servidor não fornecido" >&2
+    exit 1
+fi
+
+# Converter para minúsculas para garantir compatibilidade
+SERVIDOR=$(echo "$SERVIDOR" | tr '[:upper:]' '[:lower:]')
 
 # Mapeamento de servidores para hosts de banco
 case "$SERVIDOR" in
@@ -22,7 +30,7 @@ case "$SERVIDOR" in
         echo "10.200.0.40"
         ;;
     *)
-        echo "❌ Servidor desconhecido: $SERVIDOR" >&2
+        echo "❌ Servidor desconhecido: $SERVIDOR (esperado: gcp01, gcp02, gcp03 ou gcp-pln)" >&2
         exit 1
         ;;
 esac

@@ -114,7 +114,7 @@ Razao Social: <razão social>'''
                     
                     // Carregar configurações
                     env.DB_HOST = sh(
-                        script: "${SCRIPTS_PATH}/get_db_host.sh ${params.SERVIDOR}",
+                        script: "${SCRIPTS_PATH}/get_db_host.sh ${params.SERVIDOR.toLowerCase()}",
                         returnStdout: true
                     ).trim()
                     
