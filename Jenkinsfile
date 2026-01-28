@@ -217,7 +217,7 @@ echo "================================="
 
 # Executar criação do banco
 ./scripts/create_database.sh \\
-    --tipo-ambiente "${params.TIPO_AMBIENTE}" \\
+    --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
     --servidor "${params.SERVIDOR}" \\
     --nome-banco "${params.NOME_BANCO}" \\
     --versao-desejada "${params.VERSAO_DESEJADA}" \\
@@ -307,7 +307,7 @@ cd /tmp/pipeline-${BUILD_NUMBER}
     --war-file "/tmp/pipeline-${BUILD_NUMBER}/\$(basename ${params.WAR_FILE_PATH})" \\
     --deploy-path "${params.DEPLOY_PATH}" \\
     --nome-banco "${params.NOME_BANCO}" \\
-    --tipo-ambiente "${params.TIPO_AMBIENTE}" \\
+    --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
     --servidor "${params.SERVIDOR}" \\
     --workspace "/tmp/pipeline-${BUILD_NUMBER}"
 
