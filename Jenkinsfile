@@ -108,6 +108,10 @@ Razao Social: <razão social>'''
                         error("❌ Versão desejada é obrigatória!")
                     }
                     
+                    // Definir nome customizado para o build
+                    currentBuild.displayName = "#${BUILD_NUMBER} - ${params.NOME_BANCO}"
+                    currentBuild.description = "Ambiente: ${params.TIPO_AMBIENTE} | Servidor: ${params.SERVIDOR}"
+                    
                     if (params.DEPLOY_APP && (!params.WAR_FILE_PATH || params.WAR_FILE_PATH.trim() == '')) {
                         error("❌ Caminho do arquivo .war é obrigatório quando deploy está habilitado!")
                     }
