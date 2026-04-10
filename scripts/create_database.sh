@@ -383,8 +383,13 @@ if [[ -d "$UPDATES_DIR" ]]; then
     ls -la "$UPDATES_DIR/" || log_warning "Erro ao listar updates"
     UPDATE_COUNT=0
     
-    # Ordenar arquivos por versão
-    for update_file in $(ls -1v "$UPDATES_DIR"/*.sql 2>/dev/null || true); do
+    # Ordenar arquivos por versão (menor -> maior)
+    log "🧭 Ordem de execução dos updates: menor -> maior"
+    mapfile -t sorted_updates < <(find "$UPDATES_DIR" -maxdepth 1 -type f -name "*.sql" | sort -V)
+
+    eligible_update_files=()
+
+    for update_file in "${sorted_updates[@]}"; do
         if [[ -f "$update_file" ]]; then
             update_version=$(basename "$update_file" .sql)
             
@@ -395,18 +400,33 @@ if [[ -d "$UPDATES_DIR" ]]; then
             
             # update_version > VERSAO_ATUAL AND update_version <= VERSAO_DESEJADA
             if [[ "$comp_atual" == "1" ]] && [[ "$comp_desejada" == "-1" || "$comp_desejada" == "0" ]]; then
-                log "🔄 Aplicando update: $update_version (atual: $VERSAO_ATUAL, desejada: $VERSAO_DESEJADA)"
-                if execute_sql_file "$update_file" "$NOME_BANCO"; then
-                    ((UPDATE_COUNT++))
-                    log_success "Update $update_version aplicado"
-                else
-                    log_error "Falha ao aplicar update $update_version"
-                    exit 1
-                fi
+                eligible_update_files+=("$update_file")
             else
                 log "⏭️ Pulando update $update_version (fora do intervalo: $VERSAO_ATUAL < x <= $VERSAO_DESEJADA)"
                 log "🔍 DEBUG: comp_atual=$comp_atual, comp_desejada=$comp_desejada"
             fi
+        fi
+    done
+
+    if [[ "${#eligible_update_files[@]}" -eq 0 ]]; then
+        log_warning "Nenhum update encontrado dentro do intervalo: $VERSAO_ATUAL < x <= $VERSAO_DESEJADA"
+    else
+        log "📌 Versões dentro do intervalo ($VERSAO_ATUAL < x <= $VERSAO_DESEJADA):"
+        for update_file in "${eligible_update_files[@]}"; do
+            update_version=$(basename "$update_file" .sql)
+            log "   - $update_version"
+        done
+    fi
+
+    for update_file in "${eligible_update_files[@]}"; do
+        update_version=$(basename "$update_file" .sql)
+        log "🔄 Aplicando update: $update_version (atual: $VERSAO_ATUAL, desejada: $VERSAO_DESEJADA)"
+        if execute_sql_file "$update_file" "$NOME_BANCO"; then
+            ((UPDATE_COUNT++))
+            log_success "Update $update_version aplicado"
+        else
+            log_error "Falha ao aplicar update $update_version"
+            exit 1
         fi
     done
     
