@@ -155,7 +155,40 @@ log "📁 Origem dos updates: $SOURCE_DIR"
 
 copied=0
 skipped_identical=0
+skipped_old_version=0
+
+# Ignorar updates em pastas de versões antigas com base no ambiente
+if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
+    BASE_MAJOR=15
+else
+    BASE_MAJOR=9
+fi
+
+should_skip_old_version_path() {
+    local file_path="$1"
+    local rel_path="${file_path#$SOURCE_DIR/}"
+    local segment
+    local major
+
+    IFS='/' read -r -a path_parts <<< "$rel_path"
+    for segment in "${path_parts[@]}"; do
+        if [[ "$segment" =~ [Vv]ers[aã]o[[:space:]_-]*([0-9]+) ]]; then
+            major="${BASH_REMATCH[1]}"
+            if [[ "$major" -lt "$BASE_MAJOR" ]]; then
+                return 0
+            fi
+        fi
+    done
+
+    return 1
+}
+
 while IFS= read -r -d '' sql_file; do
+    if should_skip_old_version_path "$sql_file"; then
+        skipped_old_version=$((skipped_old_version + 1))
+        continue
+    fi
+
     base_file="$(basename "$sql_file")"
     target_file="$OUTPUT_DIR/$base_file"
 
@@ -182,5 +215,8 @@ else
     log_success "$copied arquivos SQL copiados para: $OUTPUT_DIR"
     if [[ "$skipped_identical" -gt 0 ]]; then
         log_warning "$skipped_identical duplicado(s) idêntico(s) ignorado(s)"
+    fi
+    if [[ "$skipped_old_version" -gt 0 ]]; then
+        log_warning "$skipped_old_version arquivo(s) ignorado(s) por estarem em pastas de versão antiga (major < $BASE_MAJOR)"
     fi
 fi
