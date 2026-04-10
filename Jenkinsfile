@@ -214,7 +214,7 @@ Razao Social: <razão social>'''
                         ]
 
                         def normalizeVersion = { String versionValue ->
-                            def matcher = (versionValue =~ /^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)-(\\d+)$/)
+                            def matcher = (versionValue =~ /^(\d+)\.(\d+)\.(\d+)\.(\d+)-(\d+)$/)
                             if (!matcher.matches()) {
                                 error("❌ VERSAO_DESEJADA inválida: '${versionValue}'. Use N.N.N.N-N.")
                             }
