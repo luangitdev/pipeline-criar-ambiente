@@ -154,7 +154,16 @@ mkdir -p "$APP_STAGING_DIR"
 log "📦 Extraindo WAR para pasta de publicação (${APP_NAME}/)"
 (
     cd "$APP_STAGING_DIR"
-    jar -xf "$WAR_FILE"
+    if command -v jar >/dev/null 2>&1; then
+        jar -xf "$WAR_FILE"
+    elif command -v unzip >/dev/null 2>&1; then
+        unzip -oq "$WAR_FILE"
+    elif command -v bsdtar >/dev/null 2>&1; then
+        bsdtar -xf "$WAR_FILE"
+    else
+        log_error "Nenhuma ferramenta disponível para extrair WAR (jar/unzip/bsdtar)."
+        exit 1
+    fi
 )
 
 mapfile -t login_files < <(find "$APP_STAGING_DIR" -type f -name "login.properties")
