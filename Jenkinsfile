@@ -520,12 +520,16 @@ EOF
                                 ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
                                 scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
                                 scp -o StrictHostKeyChecking=no "\${ARTIFACT_WAR}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/app.war
+                                printf '%s' "\${INFRA_SUDO_PASSWORD}" > "${WORKSPACE}/temp/.infra_sudo_password"
+                                scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.infra_sudo_password" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password
+                                rm -f "${WORKSPACE}/temp/.infra_sudo_password"
                                 
                                 # Executar deploy no bastion
-                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "bash -s" -- "\${INFRA_SUDO_PASSWORD}" << 'ENDDEPLOY'
+                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDDEPLOY'
 cd /tmp/pipeline-${BUILD_NUMBER}
 chmod +x scripts/*.sh
-SUDO_PASSWORD_REMOTE="\$1"
+trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password' EXIT
+SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)"
 
 # Executar deploy da aplicação
 ./scripts/deploy_application.sh \\
@@ -605,14 +609,22 @@ EOF
                             # Garantir diretório e scripts no bastion
                             ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
                             scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
+                            printf '%s' "\${DB_USER}" > "${WORKSPACE}/temp/.db_user"
+                            printf '%s' "\${DB_PASSWORD}" > "${WORKSPACE}/temp/.db_password"
+                            printf '%s' "\${INFRA_SUDO_PASSWORD}" > "${WORKSPACE}/temp/.infra_sudo_password"
+                            scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.db_user" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.db_user
+                            scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.db_password" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.db_password
+                            scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.infra_sudo_password" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password
+                            rm -f "${WORKSPACE}/temp/.db_user" "${WORKSPACE}/temp/.db_password" "${WORKSPACE}/temp/.infra_sudo_password"
                             
                             # Executar verificações no bastion
-                            ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "bash -s" -- "\${DB_USER}" "\${DB_PASSWORD}" "\${INFRA_SUDO_PASSWORD}" << 'ENDVERIFY'
+                            ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDVERIFY'
 cd /tmp/pipeline-${BUILD_NUMBER}
 chmod +x scripts/*.sh
-DB_USER_REMOTE="\$1"
-DB_PASSWORD_REMOTE="\$2"
-SUDO_PASSWORD_REMOTE="\$3"
+trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.db_user /tmp/pipeline-${BUILD_NUMBER}/.db_password /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password' EXIT
+DB_USER_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.db_user)"
+DB_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.db_password)"
+SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)"
 
 echo "🔍 Executando verificações..."
 
