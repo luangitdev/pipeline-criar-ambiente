@@ -46,6 +46,29 @@ pipeline {
             defaultValue: false,
             description: 'Executar deploy da aplicação'
         )
+        booleanParam(
+            name: 'SINCRONIZAR_UPDATES_INFRA',
+            defaultValue: true,
+            description: 'Buscar updates SQL no repositório de infraestrutura (Azure DevOps)'
+        )
+        string(
+            name: 'INFRA_REPO_URL',
+            defaultValue: 'https://dev.azure.com/MobiisLogistica/Roteirizador/_git/infraestrutura',
+            description: 'URL do repositório de infraestrutura que contém as migrations',
+            trim: true
+        )
+        string(
+            name: 'INFRA_REPO_BRANCH',
+            defaultValue: 'Master',
+            description: 'Branch do repositório de infraestrutura',
+            trim: true
+        )
+        string(
+            name: 'INFRA_REPO_CREDENTIALS_ID',
+            defaultValue: 'azure-devops-infra-readonly',
+            description: 'Credentials ID (username/password ou PAT) para acessar o repositório de infraestrutura',
+            trim: true
+        )
         text(
             name: 'DADOS_AMBIENTE',
             defaultValue: '''Endereço: Rua Capitão Luis Ramos, 200
@@ -97,6 +120,7 @@ Razao Social: <razão social>'''
                     echo "   - Versão: ${params.VERSAO_DESEJADA}"
                     echo "   - Criar Banco: ${params.CRIAR_BANCO}"
                     echo "   - Deploy App: ${params.DEPLOY_APP}"
+                    echo "   - Sincronizar Updates Infra: ${params.SINCRONIZAR_UPDATES_INFRA}"
                     echo "======================================="
                     
                     // Validações básicas
@@ -114,6 +138,10 @@ Razao Social: <razão social>'''
                     
                     if (params.DEPLOY_APP && (!params.WAR_FILE_PATH || params.WAR_FILE_PATH.trim() == '')) {
                         error("❌ Caminho do arquivo .war é obrigatório quando deploy está habilitado!")
+                    }
+
+                    if (params.CRIAR_BANCO && params.SINCRONIZAR_UPDATES_INFRA && (!params.INFRA_REPO_CREDENTIALS_ID || params.INFRA_REPO_CREDENTIALS_ID.trim() == '')) {
+                        error("❌ INFRA_REPO_CREDENTIALS_ID é obrigatório quando a sincronização de updates está habilitada!")
                     }
                     
                     // Carregar configurações
@@ -158,6 +186,56 @@ Razao Social: <razão social>'''
                             fi
                         """
                     }
+                }
+            }
+        }
+
+        stage('🔄 Sincronização de Migrations') {
+            when {
+                expression { params.CRIAR_BANCO }
+            }
+            steps {
+                script {
+                    def tipoAmbiente = params.TIPO_AMBIENTE.toLowerCase()
+                    def outputDir = "${WORKSPACE}/temp/sql_updates/${tipoAmbiente}/updates"
+
+                    sh """
+                        mkdir -p "${outputDir}"
+                        rm -f "${outputDir}"/*.sql
+                    """
+
+                    if (params.SINCRONIZAR_UPDATES_INFRA) {
+                        echo "🔄 Sincronizando updates do repositório de infraestrutura..."
+
+                        withCredentials([
+                            usernamePassword(
+                                credentialsId: params.INFRA_REPO_CREDENTIALS_ID,
+                                usernameVariable: 'INFRA_GIT_USER',
+                                passwordVariable: 'INFRA_GIT_TOKEN'
+                            )
+                        ]) {
+                            sh """
+                                ${SCRIPTS_PATH}/fetch_updates.sh \\
+                                    --tipo-ambiente "${tipoAmbiente}" \\
+                                    --repo-url "${params.INFRA_REPO_URL}" \\
+                                    --repo-branch "${params.INFRA_REPO_BRANCH}" \\
+                                    --work-dir "${WORKSPACE}/temp/infra_repo_cache" \\
+                                    --output-dir "${outputDir}" \\
+                                    --git-username "${INFRA_GIT_USER}" \\
+                                    --git-token "${INFRA_GIT_TOKEN}"
+                            """
+                        }
+                    } else {
+                        echo "ℹ️ Sincronização desabilitada. Usando updates locais do repositório atual."
+                        sh """
+                            cp ${SQL_PATH}/${tipoAmbiente}/updates/*.sql "${outputDir}/" 2>/dev/null || true
+                        """
+                    }
+
+                    sh """
+                        echo "📋 Updates preparados para execução:"
+                        ls -1 "${outputDir}"/*.sql 2>/dev/null || echo "Nenhum update disponível"
+                    """
                 }
             }
         }
@@ -217,6 +295,7 @@ echo "DB_PORT: ${env.DB_PORT}"
 echo "DB_USER: ${DB_USER}"
 echo "DB_PASSWORD: [MASKED]"
 echo "WORKSPACE: /tmp/pipeline-${BUILD_NUMBER}"
+echo "UPDATES_DIR: /tmp/pipeline-${BUILD_NUMBER}/temp/sql_updates/${params.TIPO_AMBIENTE.toLowerCase()}/updates"
 echo "================================="
 
 # Executar criação do banco
@@ -229,7 +308,8 @@ echo "================================="
     --db-port "${env.DB_PORT}" \\
     --db-user "${DB_USER}" \\
     --db-password "${DB_PASSWORD}" \\
-    --workspace "/tmp/pipeline-${BUILD_NUMBER}"
+    --workspace "/tmp/pipeline-${BUILD_NUMBER}" \\
+    --updates-dir "/tmp/pipeline-${BUILD_NUMBER}/temp/sql_updates/${params.TIPO_AMBIENTE.toLowerCase()}/updates"
 
 # Verificar se houve erro na criação
 if [ \$? -ne 0 ]; then

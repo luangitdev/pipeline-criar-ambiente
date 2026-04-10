@@ -14,6 +14,7 @@ pipelineCriarAmbiente/
 │   ├── get_db_host.sh         # Mapeia servidor para host DB
 │   ├── create_database.sh     # Script principal de criação
 │   ├── generate_start_sql.sh  # Gera SQL personalizado
+│   ├── fetch_updates.sh       # Sincroniza migrations do repositório de infraestrutura
 │   ├── deploy_application.sh  # Deploy de aplicação WAR
 │   ├── verify_database.sh     # Verificação do banco
 │   └── verify_deployment.sh   # Verificação do deploy
@@ -66,6 +67,10 @@ pipelineCriarAmbiente/
 | `DEPLOY_PATH` | String | Caminho de deploy | `/opt/applications` |
 | `CRIAR_BANCO` | Boolean | Executar criação BD | `true`/`false` |
 | `DEPLOY_APP` | Boolean | Executar deploy app | `true`/`false` |
+| `SINCRONIZAR_UPDATES_INFRA` | Boolean | Buscar updates SQL no repositório de infraestrutura | `true`/`false` |
+| `INFRA_REPO_URL` | String | URL do repositório de infraestrutura | `https://dev.azure.com/.../_git/infraestrutura` |
+| `INFRA_REPO_BRANCH` | String | Branch do repositório de infraestrutura | `Master` |
+| `INFRA_REPO_CREDENTIALS_ID` | String | Credentials ID Jenkins para acesso ao repo infra | `azure-devops-infra-readonly` |
 
 ### 3. Exemplo de Execução
 
@@ -134,6 +139,11 @@ Razão Social: Empresa Exemplo Ltda
 - `sql/{ambiente}/config.sql`: Configurações específicas do ambiente
 - `sql/{ambiente}/credentials.sql`: Usuários e permissões
 - `sql/{ambiente}/updates/`: Updates incrementais ordenados
+
+### Sincronização Automática de Migrations (Infraestrutura)
+- Quando `SINCRONIZAR_UPDATES_INFRA=true`, o pipeline busca as migrations diretamente do repositório de infraestrutura.
+- O pipeline monta os arquivos em `temp/sql_updates/{ambiente}/updates/` e usa esse diretório na criação do banco.
+- Para `PTF`, busca pasta que contenha `pathfind`; para `PLN`, pasta que contenha `planner` dentro de `Atualizações de banco`.
 
 ## 🎯 Benefícios vs Ansible Original
 

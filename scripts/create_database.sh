@@ -39,6 +39,7 @@ DB_PORT="5432"
 DB_USER=""
 DB_PASSWORD=""
 WORKSPACE=""
+UPDATES_DIR_OVERRIDE=""
 
 # Parse de argumentos
 while [[ $# -gt 0 ]]; do
@@ -77,6 +78,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --workspace)
             WORKSPACE="$2"
+            shift 2
+            ;;
+        --updates-dir)
+            UPDATES_DIR_OVERRIDE="$2"
             shift 2
             ;;
         *)
@@ -132,6 +137,9 @@ log "   - Servidor: $SERVIDOR"
 log "   - Banco: $NOME_BANCO"
 log "   - Host: $DB_HOST:$DB_PORT"
 log "   - Versão: $VERSAO_DESEJADA"
+if [[ -n "$UPDATES_DIR_OVERRIDE" ]]; then
+    log "   - Updates dir (override): $UPDATES_DIR_OVERRIDE"
+fi
 
 # Definir template baseado no ambiente
 if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
@@ -370,7 +378,7 @@ log "📋 Versão atual: $VERSAO_ATUAL"
 
 # 6. Executar updates necessários
 log "🔄 Executando updates necessários..."
-UPDATES_DIR="$WORKSPACE/sql/$TIPO_AMBIENTE/updates"
+UPDATES_DIR="${UPDATES_DIR_OVERRIDE:-$WORKSPACE/sql/$TIPO_AMBIENTE/updates}"
 if [[ -d "$UPDATES_DIR" ]]; then
     log "📁 Arquivos encontrados em updates:"
     ls -la "$UPDATES_DIR/" || log_warning "Erro ao listar updates"
