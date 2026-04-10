@@ -154,12 +154,21 @@ fi
 log "📁 Origem dos updates: $SOURCE_DIR"
 
 copied=0
+skipped_identical=0
 while IFS= read -r -d '' sql_file; do
     base_file="$(basename "$sql_file")"
     target_file="$OUTPUT_DIR/$base_file"
 
     if [[ -f "$target_file" ]]; then
-        log_error "Arquivo SQL duplicado detectado: $base_file"
+        if cmp -s "$sql_file" "$target_file"; then
+            log_warning "Arquivo SQL duplicado com conteúdo idêntico ignorado: $base_file"
+            skipped_identical=$((skipped_identical + 1))
+            continue
+        fi
+
+        log_error "Conflito de arquivo SQL duplicado: $base_file"
+        log_error " - Já copiado: $target_file"
+        log_error " - Novo arquivo: $sql_file"
         exit 1
     fi
 
@@ -171,4 +180,7 @@ if [[ "$copied" -eq 0 ]]; then
     log_warning "Nenhum arquivo .sql encontrado na origem: $SOURCE_DIR"
 else
     log_success "$copied arquivos SQL copiados para: $OUTPUT_DIR"
+    if [[ "$skipped_identical" -gt 0 ]]; then
+        log_warning "$skipped_identical duplicado(s) idêntico(s) ignorado(s)"
+    fi
 fi
