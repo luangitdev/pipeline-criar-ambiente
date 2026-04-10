@@ -124,6 +124,16 @@ compare_versions() {
     fi
 }
 
+# Extrai versão no formato N.N.N.N-N de um texto (ex.: nome de arquivo)
+extract_version_token() {
+    local text="$1"
+    if [[ "$text" =~ ([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9]+) ]]; then
+        echo "${BASH_REMATCH[1]}"
+        return 0
+    fi
+    return 1
+}
+
 # Função para executar psql com senha segura
 run_psql_safe() {
     local password_decoded=$(echo "$DB_PASSWORD_ENCODED" | base64 -d)
@@ -140,6 +150,13 @@ log "   - Versão: $VERSAO_DESEJADA"
 if [[ -n "$UPDATES_DIR_OVERRIDE" ]]; then
     log "   - Updates dir (override): $UPDATES_DIR_OVERRIDE"
 fi
+
+if ! normalized_desired_version=$(extract_version_token "$VERSAO_DESEJADA"); then
+    log_error "Versão desejada inválida: '$VERSAO_DESEJADA' (esperado formato N.N.N.N-N)"
+    exit 1
+fi
+VERSAO_DESEJADA="$normalized_desired_version"
+log "📋 Versão desejada normalizada: $VERSAO_DESEJADA"
 
 # Definir template baseado no ambiente
 if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
@@ -391,7 +408,11 @@ if [[ -d "$UPDATES_DIR" ]]; then
 
     for update_file in "${sorted_updates[@]}"; do
         if [[ -f "$update_file" ]]; then
-            update_version=$(basename "$update_file" .sql)
+            update_label=$(basename "$update_file" .sql)
+            if ! update_version=$(extract_version_token "$update_label"); then
+                log_warning "Pulando arquivo sem versão reconhecida no nome: $update_label"
+                continue
+            fi
             
             # Verificar se update deve ser aplicado usando comparação numérica de versões
             # Condição: versão do update > versão atual E versão do update <= versão desejada
@@ -402,7 +423,7 @@ if [[ -d "$UPDATES_DIR" ]]; then
             if [[ "$comp_atual" == "1" ]] && [[ "$comp_desejada" == "-1" || "$comp_desejada" == "0" ]]; then
                 eligible_update_files+=("$update_file")
             else
-                log "⏭️ Pulando update $update_version (fora do intervalo: $VERSAO_ATUAL < x <= $VERSAO_DESEJADA)"
+                log "⏭️ Pulando update $update_label [versão: $update_version] (fora do intervalo: $VERSAO_ATUAL < x <= $VERSAO_DESEJADA)"
                 log "🔍 DEBUG: comp_atual=$comp_atual, comp_desejada=$comp_desejada"
             fi
         fi
@@ -413,14 +434,16 @@ if [[ -d "$UPDATES_DIR" ]]; then
     else
         log "📌 Versões dentro do intervalo ($VERSAO_ATUAL < x <= $VERSAO_DESEJADA):"
         for update_file in "${eligible_update_files[@]}"; do
-            update_version=$(basename "$update_file" .sql)
-            log "   - $update_version"
+            update_label=$(basename "$update_file" .sql)
+            update_version=$(extract_version_token "$update_label" || echo "$update_label")
+            log "   - $update_version ($update_label)"
         done
     fi
 
     for update_file in "${eligible_update_files[@]}"; do
-        update_version=$(basename "$update_file" .sql)
-        log "🔄 Aplicando update: $update_version (atual: $VERSAO_ATUAL, desejada: $VERSAO_DESEJADA)"
+        update_label=$(basename "$update_file" .sql)
+        update_version=$(extract_version_token "$update_label" || echo "$update_label")
+        log "🔄 Aplicando update: $update_label [versão: $update_version] (atual: $VERSAO_ATUAL, desejada: $VERSAO_DESEJADA)"
         if execute_sql_file "$update_file" "$NOME_BANCO"; then
             ((UPDATE_COUNT++))
             log_success "Update $update_version aplicado"

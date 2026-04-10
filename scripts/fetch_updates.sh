@@ -183,7 +183,26 @@ should_skip_old_version_path() {
     return 1
 }
 
+should_skip_outros_path() {
+    local file_path="$1"
+    local rel_path="${file_path#$SOURCE_DIR/}"
+    local segment
+
+    IFS='/' read -r -a path_parts <<< "$rel_path"
+    for segment in "${path_parts[@]}"; do
+        if [[ "$segment" =~ ^[Oo][Uu][Tt][Rr][Oo][Ss]$ ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 while IFS= read -r -d '' sql_file; do
+    if should_skip_outros_path "$sql_file"; then
+        continue
+    fi
+
     if should_skip_old_version_path "$sql_file"; then
         skipped_old_version=$((skipped_old_version + 1))
         continue
