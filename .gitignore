@@ -12,3 +12,6 @@ erro.log
 # Arquivos de backup
 *.bak
 *.backup
+
+# Modelos
+*.codex
