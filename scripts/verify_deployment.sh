@@ -1,10 +1,7 @@
 #!/bin/bash
 
-# Script para verificar se o deployment foi realizado corretamente
-
 set -euo pipefail
 
-# Cores
 GREEN='\033[0;32m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
@@ -27,15 +24,32 @@ log_warning() {
     echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️ $1${NC}"
 }
 
-# Parse argumentos
+DEPLOY_SERVER_NAME=""
+DEPLOY_SERVER_IP=""
+TOMCAT_VOLUME=""
+APP_NAME=""
+SUDO_PASSWORD=""
+
 while [[ $# -gt 0 ]]; do
-    case $1 in
-        --deploy-path)
-            DEPLOY_PATH="$2"
+    case "$1" in
+        --deploy-server-name)
+            DEPLOY_SERVER_NAME="$2"
             shift 2
             ;;
-        --nome-banco)
-            NOME_BANCO="$2"
+        --deploy-server-ip)
+            DEPLOY_SERVER_IP="$2"
+            shift 2
+            ;;
+        --tomcat-volume)
+            TOMCAT_VOLUME="$2"
+            shift 2
+            ;;
+        --app-name)
+            APP_NAME="$2"
+            shift 2
+            ;;
+        --sudo-password)
+            SUDO_PASSWORD="$2"
             shift 2
             ;;
         *)
@@ -45,108 +59,60 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-APP_DIR="$DEPLOY_PATH/$NOME_BANCO"
-
-log "🔍 Verificando deployment em: $APP_DIR"
-
-# Verificar se diretório existe
-if [[ ! -d "$APP_DIR" ]]; then
-    log_error "Diretório da aplicação não encontrado: $APP_DIR"
+if [[ -z "$DEPLOY_SERVER_IP" || -z "$TOMCAT_VOLUME" || -z "$APP_NAME" || -z "$SUDO_PASSWORD" ]]; then
+    log_error "Parâmetros obrigatórios faltando para verificação do deploy."
     exit 1
 fi
 
-log_success "Diretório da aplicação existe"
+TARGET_BASE="/var/lib/docker/volumes/${TOMCAT_VOLUME}/_data"
+TARGET_APP_DIR="${TARGET_BASE}/${APP_NAME}"
 
-# Verificar estrutura de diretórios
-log "📁 Verificando estrutura..."
-DIRETORIOS=("webapp" "logs")
-for dir in "${DIRETORIOS[@]}"; do
-    if [[ -d "$APP_DIR/$dir" ]]; then
-        log_success "Diretório $dir existe"
-    else
-        log_error "Diretório $dir não encontrado!"
-        exit 1
-    fi
-done
+log "🔍 Verificando deploy remoto: ${DEPLOY_SERVER_NAME} (${DEPLOY_SERVER_IP})"
+log "📂 Caminho esperado: ${TARGET_APP_DIR}"
 
-# Verificar arquivos essenciais
-log "📄 Verificando arquivos..."
-ARQUIVOS=(
-    "webapp/WEB-INF/classes/application.properties"
-    "start.sh"
-    "stop.sh"
-)
+ssh -o StrictHostKeyChecking=no "infra@${DEPLOY_SERVER_IP}" "bash -s" -- "$SUDO_PASSWORD" "$TARGET_BASE" "$TARGET_APP_DIR" << 'EOS'
+set -euo pipefail
 
-for arquivo in "${ARQUIVOS[@]}"; do
-    if [[ -f "$APP_DIR/$arquivo" ]]; then
-        log_success "Arquivo $arquivo existe"
-    else
-        log_error "Arquivo $arquivo não encontrado!"
-        exit 1
-    fi
-done
+SUDO_PASSWORD="$1"
+TARGET_BASE="$2"
+TARGET_APP_DIR="$3"
 
-# Verificar permissões dos scripts
-log "⚙️ Verificando permissões..."
-SCRIPTS=("start.sh" "stop.sh")
-for script in "${SCRIPTS[@]}"; do
-    if [[ -x "$APP_DIR/$script" ]]; then
-        log_success "Script $script é executável"
-    else
-        log_warning "Script $script não é executável, corrigindo..."
-        chmod +x "$APP_DIR/$script"
-        log_success "Permissão corrigida para $script"
-    fi
-done
+run_sudo() {
+    printf '%s\n' "$SUDO_PASSWORD" | sudo -S -p '' "$@"
+}
 
-# Verificar conteúdo da webapp
-log "🔍 Verificando conteúdo da webapp..."
-WEBAPP_DIR="$APP_DIR/webapp"
-
-if [[ -d "$WEBAPP_DIR/WEB-INF" ]]; then
-    log_success "Estrutura WEB-INF existe"
-else
-    log_error "Estrutura WEB-INF não encontrada!"
+if ! run_sudo test -d "$TARGET_BASE"; then
+    echo "❌ Volume tomcat não encontrado: $TARGET_BASE"
     exit 1
 fi
 
-# Contar arquivos na webapp
-FILE_COUNT=$(find "$WEBAPP_DIR" -type f | wc -l)
-log "📋 Total de arquivos na webapp: $FILE_COUNT"
+if ! run_sudo test -d "$TARGET_APP_DIR"; then
+    echo "❌ Diretório da aplicação não encontrado: $TARGET_APP_DIR"
+    exit 1
+fi
 
-if [[ $FILE_COUNT -lt 10 ]]; then
-    log_warning "Poucos arquivos encontrados, verifique se o WAR foi extraído corretamente"
+FILE_COUNT=$(run_sudo find "$TARGET_APP_DIR" -type f | wc -l | tr -d ' ')
+DIR_SIZE=$(run_sudo du -sh "$TARGET_APP_DIR" | awk '{print $1}')
+
+echo "✅ Diretório da aplicação encontrado"
+echo "📊 Total de arquivos: $FILE_COUNT"
+echo "📦 Tamanho total: $DIR_SIZE"
+
+if [[ "$FILE_COUNT" -lt 10 ]]; then
+    echo "⚠️ Poucos arquivos no diretório da aplicação; valide extração/publicação"
+fi
+
+if run_sudo find "$TARGET_APP_DIR" -type f -name "login.properties" | grep -q .; then
+    echo "✅ login.properties localizado"
 else
-    log_success "Quantidade adequada de arquivos encontrada"
+    echo "⚠️ login.properties não encontrado"
 fi
 
-# Verificar tamanho do diretório
-SIZE=$(du -sh "$APP_DIR" | cut -f1)
-log "📎 Tamanho total da aplicação: $SIZE"
-
-# Verificar configuração
-APP_PROPS="$APP_DIR/webapp/WEB-INF/classes/application.properties"
-if [[ -f "$APP_PROPS" ]]; then
-    log "⚙️ Verificando configurações..."
-    
-    if grep -q "$NOME_BANCO" "$APP_PROPS"; then
-        log_success "Nome do banco configurado corretamente"
-    else
-        log_warning "Nome do banco pode não estar configurado"
-    fi
-    
-    if grep -q "spring.datasource.url" "$APP_PROPS"; then
-        log_success "URL do banco configurada"
-    else
-        log_warning "URL do banco não encontrada"
-    fi
+if run_sudo find "$TARGET_APP_DIR" -type f -name "application.properties" | grep -q .; then
+    echo "✅ application.properties localizado"
+else
+    echo "⚠️ application.properties não encontrado"
 fi
+EOS
 
-log_success "✅ Verificação do deployment concluída com sucesso!"
-log "📂 Resumo da aplicação:"
-log "   - Diretório: $APP_DIR"
-log "   - Tamanho: $SIZE"
-log "   - Arquivos: $FILE_COUNT"
-log ""
-log "🚀 Para iniciar: $APP_DIR/start.sh"
-log "🛑 Para parar: $APP_DIR/stop.sh"
+log_success "Verificação de deploy concluída com sucesso"

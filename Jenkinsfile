@@ -12,6 +12,24 @@ pipeline {
             choices: ['GCP01', 'GCP02', 'GCP03', 'GCP-PLN'],
             description: 'Servidor de destino'
         )
+        choice(
+            name: 'DEPLOY_TARGET',
+            choices: [
+                'IMP-01:34.95.251.169',
+                'PROD-01:35.247.243.102',
+                'PROD-02:35.199.97.30',
+                'PROD-03:34.95.176.6',
+                'PROD-04:34.151.235.67',
+                'PROD-05:35.247.231.213',
+                'PROD-06:34.151.245.19',
+                'PROD-07:35.199.65.37',
+                'PROD-08:35.199.103.167',
+                'PROD-09:35.199.120.245',
+                'PROD-10:34.95.167.115',
+                'PROD-11:34.39.155.140'
+            ],
+            description: 'Servidor de deploy no formato NOME:IP'
+        )
         string(
             name: 'NOME_BANCO',
             defaultValue: '',
@@ -27,13 +45,31 @@ pipeline {
         string(
             name: 'WAR_FILE_PATH',
             defaultValue: '',
-            description: 'Caminho para o arquivo .war (opcional)',
+            description: 'Caminho para arquivo .war local (opcional, override técnico)',
             trim: true
         )
         string(
-            name: 'DEPLOY_PATH',
-            defaultValue: '/opt/applications',
-            description: 'Caminho base para deploy da aplicação',
+            name: 'TOMCAT_VOLUME',
+            defaultValue: '',
+            description: 'Nome do volume Docker do Tomcat (ex: ptf-routing_tomcat-v15_8081)',
+            trim: true
+        )
+        string(
+            name: 'APP_NAME',
+            defaultValue: 'pathfind_',
+            description: 'Nome final da aplicação no Tomcat',
+            trim: true
+        )
+        string(
+            name: 'APP_REPO_URL_OVERRIDE',
+            defaultValue: '',
+            description: 'Override técnico opcional da URL do repositório da aplicação',
+            trim: true
+        )
+        string(
+            name: 'APP_REPO_BRANCH_OVERRIDE',
+            defaultValue: '',
+            description: 'Override técnico opcional da branch da aplicação',
             trim: true
         )
         booleanParam(
@@ -116,10 +152,13 @@ Razao Social: <razão social>'''
                     echo "📋 Parâmetros recebidos:"
                     echo "   - Tipo Ambiente: ${params.TIPO_AMBIENTE}"
                     echo "   - Servidor: ${params.SERVIDOR}"
+                    echo "   - Deploy Target: ${params.DEPLOY_TARGET}"
                     echo "   - Nome Banco: ${params.NOME_BANCO}"
                     echo "   - Versão: ${params.VERSAO_DESEJADA}"
                     echo "   - Criar Banco: ${params.CRIAR_BANCO}"
                     echo "   - Deploy App: ${params.DEPLOY_APP}"
+                    echo "   - Tomcat Volume: ${params.TOMCAT_VOLUME}"
+                    echo "   - App Name: ${params.APP_NAME}"
                     echo "   - Sincronizar Updates Infra: ${params.SINCRONIZAR_UPDATES_INFRA}"
                     echo "======================================="
                     
@@ -134,14 +173,79 @@ Razao Social: <razão social>'''
                     
                     // Definir nome customizado para o build
                     currentBuild.displayName = "#${BUILD_NUMBER} - ${params.NOME_BANCO}"
-                    currentBuild.description = "Ambiente: ${params.TIPO_AMBIENTE} | Servidor: ${params.SERVIDOR}"
+                    currentBuild.description = "Ambiente: ${params.TIPO_AMBIENTE} | DB: ${params.SERVIDOR} | Deploy: ${params.DEPLOY_TARGET}"
                     
-                    if (params.DEPLOY_APP && (!params.WAR_FILE_PATH || params.WAR_FILE_PATH.trim() == '')) {
-                        error("❌ Caminho do arquivo .war é obrigatório quando deploy está habilitado!")
+                    if (params.DEPLOY_APP) {
+                        if (!params.DEPLOY_TARGET || params.DEPLOY_TARGET.trim() == '') {
+                            error("❌ DEPLOY_TARGET é obrigatório quando deploy está habilitado!")
+                        }
+                        if (!params.TOMCAT_VOLUME || params.TOMCAT_VOLUME.trim() == '') {
+                            error("❌ TOMCAT_VOLUME é obrigatório quando deploy está habilitado!")
+                        }
+                        if (!params.APP_NAME || params.APP_NAME.trim() == '') {
+                            error("❌ APP_NAME é obrigatório quando deploy está habilitado!")
+                        }
+
+                        def parts = params.DEPLOY_TARGET.split(':')
+                        if (parts.size() != 2 || !parts[0].trim() || !parts[1].trim()) {
+                            error("❌ DEPLOY_TARGET inválido. Use o formato NOME:IP.")
+                        }
+
+                        def ip = parts[1].trim()
+                        if (!(ip ==~ /^\\d{1,3}(\\.\\d{1,3}){3}$/)) {
+                            error("❌ DEPLOY_TARGET inválido. IP fora do padrão esperado.")
+                        }
+
+                        env.DEPLOY_SERVER_NAME = parts[0].trim()
+                        env.DEPLOY_SERVER_IP = ip
+                    } else {
+                        env.DEPLOY_SERVER_NAME = ''
+                        env.DEPLOY_SERVER_IP = ''
                     }
 
                     if (params.CRIAR_BANCO && params.SINCRONIZAR_UPDATES_INFRA && (!params.INFRA_REPO_CREDENTIALS_ID || params.INFRA_REPO_CREDENTIALS_ID.trim() == '')) {
                         error("❌ INFRA_REPO_CREDENTIALS_ID é obrigatório quando a sincronização de updates está habilitada!")
+                    }
+
+                    if (params.DEPLOY_APP && params.CRIAR_BANCO) {
+                        def minByAmbiente = [
+                            'PTF': '15.12.0.3-43',
+                            'PLN': '9.0.0.0-0'
+                        ]
+
+                        def normalizeVersion = { String versionValue ->
+                            def matcher = (versionValue =~ /^(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)-(\\d+)$/)
+                            if (!matcher.matches()) {
+                                error("❌ VERSAO_DESEJADA inválida: '${versionValue}'. Use N.N.N.N-N.")
+                            }
+                            return [
+                                matcher[0][1].toInteger(),
+                                matcher[0][2].toInteger(),
+                                matcher[0][3].toInteger(),
+                                matcher[0][4].toInteger(),
+                                matcher[0][5].toInteger()
+                            ]
+                        }
+
+                        def isLowerThan = { left, right ->
+                            for (int i = 0; i < left.size(); i++) {
+                                if (left[i] < right[i]) {
+                                    return true
+                                }
+                                if (left[i] > right[i]) {
+                                    return false
+                                }
+                            }
+                            return false
+                        }
+
+                        def minVersion = minByAmbiente[params.TIPO_AMBIENTE]
+                        def desiredTokens = normalizeVersion(params.VERSAO_DESEJADA.trim())
+                        def minTokens = normalizeVersion(minVersion)
+
+                        if (isLowerThan(desiredTokens, minTokens)) {
+                            error("❌ VERSAO_DESEJADA (${params.VERSAO_DESEJADA}) é menor que o piso permitido para ${params.TIPO_AMBIENTE}: ${minVersion}.")
+                        }
                     }
                     
                     // Carregar configurações
@@ -149,8 +253,20 @@ Razao Social: <razão social>'''
                         script: "${SCRIPTS_PATH}/get_db_host.sh ${params.SERVIDOR.toLowerCase()}",
                         returnStdout: true
                     ).trim()
+
+                    def appRepoDefaults = [
+                        'PTF': [url: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Roteirizador/_git/pathfind', branch: 'mvp'],
+                        'PLN': [url: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Planner%20e%20Torre/_git/planner', branch: 'v8']
+                    ]
+                    def selectedRepo = appRepoDefaults[params.TIPO_AMBIENTE]
+                    env.APP_REPO_URL = (params.APP_REPO_URL_OVERRIDE?.trim()) ? params.APP_REPO_URL_OVERRIDE.trim() : selectedRepo.url
+                    env.APP_REPO_BRANCH = (params.APP_REPO_BRANCH_OVERRIDE?.trim()) ? params.APP_REPO_BRANCH_OVERRIDE.trim() : selectedRepo.branch
                     
                     echo "✅ Validação concluída. DB Host: ${env.DB_HOST}"
+                    if (params.DEPLOY_APP) {
+                        echo "✅ Deploy Target resolvido: ${env.DEPLOY_SERVER_NAME} (${env.DEPLOY_SERVER_IP})"
+                        echo "✅ Repositório da aplicação: ${env.APP_REPO_URL} [branch: ${env.APP_REPO_BRANCH}]"
+                    }
                 }
             }
         }
@@ -357,10 +473,36 @@ ENDCREATE
                     withCredentials([
                         string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
                         string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
+                        string(credentialsId: 'infra-sudo-pswd', variable: 'INFRA_SUDO_PASSWORD'),
+                        usernamePassword(credentialsId: 'azure-credentials-luan', usernameVariable: 'APP_GIT_USER', passwordVariable: 'APP_GIT_TOKEN'),
                         sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
                     ]) {
                         def deployResult = sh(
                             script: """
+                                ARTIFACT_DIR="${WORKSPACE}/temp/app_artifact"
+                                ARTIFACT_WAR="\${ARTIFACT_DIR}/app.war"
+                                mkdir -p "\${ARTIFACT_DIR}"
+
+                                if [ -n "${params.WAR_FILE_PATH}" ]; then
+                                    echo "📦 Usando WAR override informado em WAR_FILE_PATH"
+                                    cp "${params.WAR_FILE_PATH}" "\${ARTIFACT_WAR}"
+                                else
+                                    echo "📦 Construindo WAR da aplicação a partir do repositório ${env.APP_REPO_URL}"
+                                    ${SCRIPTS_PATH}/build_app_artifact.sh \\
+                                        --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
+                                        --repo-url "${env.APP_REPO_URL}" \\
+                                        --repo-branch "${env.APP_REPO_BRANCH}" \\
+                                        --output-war "\${ARTIFACT_WAR}" \\
+                                        --workspace "${WORKSPACE}" \\
+                                        --git-username "\${APP_GIT_USER}" \\
+                                        --git-token "\${APP_GIT_TOKEN}"
+                                fi
+
+                                if [ ! -f "\${ARTIFACT_WAR}" ]; then
+                                    echo "❌ ERRO: WAR final não encontrado em \${ARTIFACT_WAR}"
+                                    exit 1
+                                fi
+
                                 # Criar script temporário para ssh-add
                                 cat > /tmp/ssh-add-script-\$\$.sh << 'EOF'
 #!/bin/bash
@@ -374,26 +516,29 @@ EOF
                                 # Adicionar chave com passphrase
                                 DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
                                 
-                                # Criar diretório no bastion se não existe
+                                # Criar diretório no bastion e copiar arquivos necessários
                                 ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
-                                
-                                # Copiar WAR file se necessário
-                                if [ ! -z "${params.WAR_FILE_PATH}" ]; then
-                                    scp -o StrictHostKeyChecking=no "${params.WAR_FILE_PATH}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
-                                fi
+                                scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
+                                scp -o StrictHostKeyChecking=no "\${ARTIFACT_WAR}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/app.war
                                 
                                 # Executar deploy no bastion
-                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDDEPLOY'
+                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "bash -s" -- "\${INFRA_SUDO_PASSWORD}" << 'ENDDEPLOY'
 cd /tmp/pipeline-${BUILD_NUMBER}
+chmod +x scripts/*.sh
+SUDO_PASSWORD_REMOTE="\$1"
 
 # Executar deploy da aplicação
 ./scripts/deploy_application.sh \\
-    --war-file "/tmp/pipeline-${BUILD_NUMBER}/\$(basename ${params.WAR_FILE_PATH})" \\
-    --deploy-path "${params.DEPLOY_PATH}" \\
+    --war-file "/tmp/pipeline-${BUILD_NUMBER}/app.war" \\
     --nome-banco "${params.NOME_BANCO}" \\
+    --db-host "${env.DB_HOST}" \\
     --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
-    --servidor "${params.SERVIDOR}" \\
-    --workspace "/tmp/pipeline-${BUILD_NUMBER}"
+    --deploy-server-name "${env.DEPLOY_SERVER_NAME}" \\
+    --deploy-server-ip "${env.DEPLOY_SERVER_IP}" \\
+    --tomcat-volume "${params.TOMCAT_VOLUME}" \\
+    --app-name "${params.APP_NAME}" \\
+    --workspace "/tmp/pipeline-${BUILD_NUMBER}" \\
+    --sudo-password "\${SUDO_PASSWORD_REMOTE}"
 
 # Verificar se houve erro no deploy
 if [ \$? -ne 0 ]; then
@@ -438,6 +583,7 @@ ENDDEPLOY
                     withCredentials([
                         string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
                         string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
+                        string(credentialsId: 'infra-sudo-pswd', variable: 'INFRA_SUDO_PASSWORD'),
                         string(credentialsId: 'db-pathfind-user', variable: 'DB_USER'),
                         string(credentialsId: 'db-pathfind-password', variable: 'DB_PASSWORD'),
                         sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
@@ -455,10 +601,18 @@ EOF
                             
                             # Adicionar chave com passphrase
                             DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
+
+                            # Garantir diretório e scripts no bastion
+                            ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
+                            scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
                             
                             # Executar verificações no bastion
-                            ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDVERIFY'
+                            ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "bash -s" -- "\${DB_USER}" "\${DB_PASSWORD}" "\${INFRA_SUDO_PASSWORD}" << 'ENDVERIFY'
 cd /tmp/pipeline-${BUILD_NUMBER}
+chmod +x scripts/*.sh
+DB_USER_REMOTE="\$1"
+DB_PASSWORD_REMOTE="\$2"
+SUDO_PASSWORD_REMOTE="\$3"
 
 echo "🔍 Executando verificações..."
 
@@ -468,15 +622,18 @@ if [ "${params.CRIAR_BANCO}" = "true" ]; then
         --nome-banco "${params.NOME_BANCO}" \\
         --db-host "${env.DB_HOST}" \\
         --db-port "${env.DB_PORT}" \\
-        --db-user "${DB_USER}" \\
-        --db-password "${DB_PASSWORD}"
+        --db-user "\${DB_USER_REMOTE}" \\
+        --db-password "\${DB_PASSWORD_REMOTE}"
 fi
 
 # Verificar deploy se foi executado
 if [ "${params.DEPLOY_APP}" = "true" ]; then
     ./scripts/verify_deployment.sh \\
-        --deploy-path "${params.DEPLOY_PATH}" \\
-        --nome-banco "${params.NOME_BANCO}"
+        --deploy-server-name "${env.DEPLOY_SERVER_NAME}" \\
+        --deploy-server-ip "${env.DEPLOY_SERVER_IP}" \\
+        --tomcat-volume "${params.TOMCAT_VOLUME}" \\
+        --app-name "${params.APP_NAME}" \\
+        --sudo-password "\${SUDO_PASSWORD_REMOTE}"
 fi
 
 # Verificar se todas as verificações passaram
@@ -568,10 +725,13 @@ EOF
 📋 Resumo:
    - Ambiente: ${params.TIPO_AMBIENTE}
    - Servidor: ${params.SERVIDOR}
+   - Deploy Target: ${params.DEPLOY_TARGET}
    - Banco: ${params.NOME_BANCO}
    - Versão: ${params.VERSAO_DESEJADA}
    - Criou Banco: ${params.CRIAR_BANCO ? 'Sim' : 'Não'}
    - Deploy App: ${params.DEPLOY_APP ? 'Sim' : 'Não'}
+   - Tomcat Volume: ${params.TOMCAT_VOLUME}
+   - App Name: ${params.APP_NAME}
 =============================================
             """
         }
@@ -583,6 +743,7 @@ EOF
 Parâmetros utilizados:
    - Ambiente: ${params.TIPO_AMBIENTE}
    - Servidor: ${params.SERVIDOR}
+   - Deploy Target: ${params.DEPLOY_TARGET}
    - Banco: ${params.NOME_BANCO}
 ==============================
             """
