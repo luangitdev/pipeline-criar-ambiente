@@ -192,7 +192,7 @@ Razao Social: <razão social>'''
                         }
 
                         def ip = parts[1].trim()
-                        if (!(ip ==~ /^\\d{1,3}(\\.\\d{1,3}){3}$/)) {
+                        if (!(ip ==~ /^\d{1,3}(\.\d{1,3}){3}$/)) {
                             error("❌ DEPLOY_TARGET inválido. IP fora do padrão esperado.")
                         }
 
