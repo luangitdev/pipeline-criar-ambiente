@@ -53,13 +53,13 @@ pipeline {
         )
         string(
             name: 'INFRA_REPO_URL',
-            defaultValue: 'https://dev.azure.com/MobiisLogistica/Roteirizador/_git/infraestrutura',
+            defaultValue: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Roteirizador/_git/infraestrutura',
             description: 'URL do repositório de infraestrutura que contém as migrations',
             trim: true
         )
         string(
             name: 'INFRA_REPO_BRANCH',
-            defaultValue: 'Master',
+            defaultValue: 'master',
             description: 'Branch do repositório de infraestrutura',
             trim: true
         )
