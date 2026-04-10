@@ -521,6 +521,8 @@ ENDVERIFY
                 
                 // Limpar arquivos temporários sensíveis
                 sh """
+                    echo "🧹 Removendo SQL updates copiados localmente..."
+                    rm -rf "${WORKSPACE}/temp/sql_updates" || true
                     rm -rf ${WORKSPACE}/temp
                     find ${WORKSPACE} -name "*.tmp" -delete 2>/dev/null || true
                 """

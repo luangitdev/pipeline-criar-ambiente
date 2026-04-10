@@ -366,15 +366,14 @@ else
     fi
 fi
 
-# 5. Obter versão atual do banco
-log "📊 Verificando versão atual do banco..."
+# 5. Definir versão base inicial por ambiente (sem consulta ao banco)
 if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
-    VERSAO_ATUAL=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT valor_texto FROM configuracao WHERE nomecampo = 'versao_banco';" | xargs || echo "0.0.0.0-0")
+    VERSAO_ATUAL="15.12.0.3-43"
 else
-    VERSAO_ATUAL=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT versao FROM versaobanco ORDER BY id DESC LIMIT 1;" | xargs || echo "0.0.0.0-0")
+    VERSAO_ATUAL="9.0.0.0-0"
 fi
 
-log "📋 Versão atual: $VERSAO_ATUAL"
+log "📋 Versão base considerada: $VERSAO_ATUAL"
 
 # 6. Executar updates necessários
 log "🔄 Executando updates necessários..."
