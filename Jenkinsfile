@@ -65,7 +65,7 @@ pipeline {
         )
         string(
             name: 'INFRA_REPO_CREDENTIALS_ID',
-            defaultValue: 'azure-devops-infra-readonly',
+            defaultValue: 'azure-credentials-luan',
             description: 'Credentials ID (username/password ou PAT) para acessar o repositório de infraestrutura',
             trim: true
         )

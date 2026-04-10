@@ -113,8 +113,14 @@ export GIT_USERNAME
 export GIT_TOKEN
 
 log "🔄 Clonando repositório de migrations..."
-git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$CLONE_DIR" >/dev/null 2>&1
-log_success "Repositório clonado em: $CLONE_DIR"
+if git clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$CLONE_DIR"; then
+    log_success "Repositório clonado em: $CLONE_DIR"
+else
+    clone_exit_code=$?
+    log_error "Falha ao clonar repositório '$REPO_URL' na branch '$REPO_BRANCH' (exit code: $clone_exit_code)"
+    log_error "Verifique URL, branch e credenciais (PAT/usuário) no Jenkins."
+    exit "$clone_exit_code"
+fi
 
 find_updates_root() {
     find "$CLONE_DIR" -maxdepth 3 -type d \
@@ -166,4 +172,3 @@ if [[ "$copied" -eq 0 ]]; then
 else
     log_success "$copied arquivos SQL copiados para: $OUTPUT_DIR"
 fi
-
