@@ -28,6 +28,7 @@ DEPLOY_SERVER_NAME=""
 DEPLOY_SERVER_IP=""
 TOMCAT_VOLUME=""
 APP_NAME=""
+SSH_KEY_FILE=""
 SUDO_PASSWORD=""
 
 while [[ $# -gt 0 ]]; do
@@ -48,6 +49,10 @@ while [[ $# -gt 0 ]]; do
             APP_NAME="$2"
             shift 2
             ;;
+        --ssh-key-file)
+            SSH_KEY_FILE="$2"
+            shift 2
+            ;;
         --sudo-password)
             SUDO_PASSWORD="$2"
             shift 2
@@ -64,13 +69,22 @@ if [[ -z "$DEPLOY_SERVER_IP" || -z "$TOMCAT_VOLUME" || -z "$APP_NAME" || -z "$SU
     exit 1
 fi
 
+SSH_OPTS=(-o StrictHostKeyChecking=no)
+if [[ -n "$SSH_KEY_FILE" ]]; then
+    if [[ ! -f "$SSH_KEY_FILE" ]]; then
+        log_error "Arquivo de chave SSH não encontrado: $SSH_KEY_FILE"
+        exit 1
+    fi
+    SSH_OPTS+=(-i "$SSH_KEY_FILE")
+fi
+
 TARGET_BASE="/var/lib/docker/volumes/${TOMCAT_VOLUME}/_data"
 TARGET_APP_DIR="${TARGET_BASE}/${APP_NAME}"
 
 log "🔍 Verificando deploy remoto: ${DEPLOY_SERVER_NAME} (${DEPLOY_SERVER_IP})"
 log "📂 Caminho esperado: ${TARGET_APP_DIR}"
 
-ssh -o StrictHostKeyChecking=no "infra@${DEPLOY_SERVER_IP}" "bash -s" -- "$SUDO_PASSWORD" "$TARGET_BASE" "$TARGET_APP_DIR" << 'EOS'
+ssh "${SSH_OPTS[@]}" "infra@${DEPLOY_SERVER_IP}" "bash -s" -- "$SUDO_PASSWORD" "$TARGET_BASE" "$TARGET_APP_DIR" << 'EOS'
 set -euo pipefail
 
 SUDO_PASSWORD="$1"

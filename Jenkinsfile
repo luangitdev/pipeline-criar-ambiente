@@ -475,7 +475,8 @@ ENDCREATE
                         string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
                         string(credentialsId: 'infra-sudo-pswd', variable: 'INFRA_SUDO_PASSWORD'),
                         usernamePassword(credentialsId: 'azure-credentials-luan', usernameVariable: 'APP_GIT_USER', passwordVariable: 'APP_GIT_TOKEN'),
-                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
+                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE'),
+                        sshUserPrivateKey(credentialsId: 'ssh-credentials', keyFileVariable: 'DEPLOY_SSH_KEY', passphraseVariable: 'DEPLOY_SSH_PASSPHRASE')
                     ]) {
                         def deployResult = sh(
                             script: """
@@ -520,15 +521,17 @@ EOF
                                 ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
                                 scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
                                 scp -o StrictHostKeyChecking=no "\${ARTIFACT_WAR}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/app.war
+                                scp -o StrictHostKeyChecking=no "\${DEPLOY_SSH_KEY}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key
+                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "chmod 600 /tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key"
                                 printf '%s' "\${INFRA_SUDO_PASSWORD}" > "${WORKSPACE}/temp/.infra_sudo_password"
                                 scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.infra_sudo_password" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password
                                 rm -f "${WORKSPACE}/temp/.infra_sudo_password"
                                 
                                 # Executar deploy no bastion
-                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDDEPLOY'
+                                ssh -A -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDDEPLOY'
 cd /tmp/pipeline-${BUILD_NUMBER}
 chmod +x scripts/*.sh
-trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password' EXIT
+trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password /tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key' EXIT
 SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)"
 
 # Executar deploy da aplicação
@@ -541,6 +544,7 @@ SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)
     --deploy-server-ip "${env.DEPLOY_SERVER_IP}" \\
     --tomcat-volume "${params.TOMCAT_VOLUME}" \\
     --app-name "${params.APP_NAME}" \\
+    --ssh-key-file "/tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key" \\
     --workspace "/tmp/pipeline-${BUILD_NUMBER}" \\
     --sudo-password "\${SUDO_PASSWORD_REMOTE}"
 
@@ -590,7 +594,8 @@ ENDDEPLOY
                         string(credentialsId: 'infra-sudo-pswd', variable: 'INFRA_SUDO_PASSWORD'),
                         string(credentialsId: 'db-pathfind-user', variable: 'DB_USER'),
                         string(credentialsId: 'db-pathfind-password', variable: 'DB_PASSWORD'),
-                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
+                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE'),
+                        sshUserPrivateKey(credentialsId: 'ssh-credentials', keyFileVariable: 'DEPLOY_SSH_KEY', passphraseVariable: 'DEPLOY_SSH_PASSPHRASE')
                     ]) {
                         sh """
                             # Criar script temporário para ssh-add
@@ -609,6 +614,8 @@ EOF
                             # Garantir diretório e scripts no bastion
                             ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
                             scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
+                            scp -o StrictHostKeyChecking=no "\${DEPLOY_SSH_KEY}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key
+                            ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "chmod 600 /tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key"
                             printf '%s' "\${DB_USER}" > "${WORKSPACE}/temp/.db_user"
                             printf '%s' "\${DB_PASSWORD}" > "${WORKSPACE}/temp/.db_password"
                             printf '%s' "\${INFRA_SUDO_PASSWORD}" > "${WORKSPACE}/temp/.infra_sudo_password"
@@ -618,10 +625,10 @@ EOF
                             rm -f "${WORKSPACE}/temp/.db_user" "${WORKSPACE}/temp/.db_password" "${WORKSPACE}/temp/.infra_sudo_password"
                             
                             # Executar verificações no bastion
-                            ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDVERIFY'
+                            ssh -A -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDVERIFY'
 cd /tmp/pipeline-${BUILD_NUMBER}
 chmod +x scripts/*.sh
-trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.db_user /tmp/pipeline-${BUILD_NUMBER}/.db_password /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password' EXIT
+trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.db_user /tmp/pipeline-${BUILD_NUMBER}/.db_password /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password /tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key' EXIT
 DB_USER_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.db_user)"
 DB_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.db_password)"
 SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)"
@@ -645,6 +652,7 @@ if [ "${params.DEPLOY_APP}" = "true" ]; then
         --deploy-server-ip "${env.DEPLOY_SERVER_IP}" \\
         --tomcat-volume "${params.TOMCAT_VOLUME}" \\
         --app-name "${params.APP_NAME}" \\
+        --ssh-key-file "/tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key" \\
         --sudo-password "\${SUDO_PASSWORD_REMOTE}"
 fi
 

@@ -51,6 +51,7 @@ DEPLOY_SERVER_NAME=""
 DEPLOY_SERVER_IP=""
 TOMCAT_VOLUME=""
 APP_NAME=""
+SSH_KEY_FILE=""
 WORKSPACE=""
 SUDO_PASSWORD=""
 
@@ -88,6 +89,10 @@ while [[ $# -gt 0 ]]; do
             APP_NAME="$2"
             shift 2
             ;;
+        --ssh-key-file)
+            SSH_KEY_FILE="$2"
+            shift 2
+            ;;
         --workspace)
             WORKSPACE="$2"
             shift 2
@@ -116,6 +121,15 @@ fi
 if [[ "$APP_NAME" == */* ]]; then
     log_error "APP_NAME inválido: não use '/'."
     exit 1
+fi
+
+SSH_OPTS=(-o StrictHostKeyChecking=no)
+if [[ -n "$SSH_KEY_FILE" ]]; then
+    if [[ ! -f "$SSH_KEY_FILE" ]]; then
+        log_error "Arquivo de chave SSH não encontrado: $SSH_KEY_FILE"
+        exit 1
+    fi
+    SSH_OPTS+=(-i "$SSH_KEY_FILE")
 fi
 
 LANGUAGE_ENDPOINT=""
@@ -202,10 +216,10 @@ REMOTE_TMP_PREFIX="/tmp/${APP_NAME}_deploy_${RANDOM}_$$"
 REMOTE_TAR_FILE="${REMOTE_TMP_PREFIX}.tar.gz"
 
 log "📤 Copiando pacote para o servidor alvo"
-scp -o StrictHostKeyChecking=no "$TAR_FILE" "infra@${DEPLOY_SERVER_IP}:${REMOTE_TAR_FILE}"
+scp "${SSH_OPTS[@]}" "$TAR_FILE" "infra@${DEPLOY_SERVER_IP}:${REMOTE_TAR_FILE}"
 
 log "🚚 Publicando aplicação em /var/lib/docker/volumes/${TOMCAT_VOLUME}/_data/${APP_NAME}"
-ssh -o StrictHostKeyChecking=no "infra@${DEPLOY_SERVER_IP}" "bash -s" -- "$SUDO_PASSWORD" "$TOMCAT_VOLUME" "$APP_NAME" "$REMOTE_TMP_PREFIX" << 'EOS'
+ssh "${SSH_OPTS[@]}" "infra@${DEPLOY_SERVER_IP}" "bash -s" -- "$SUDO_PASSWORD" "$TOMCAT_VOLUME" "$APP_NAME" "$REMOTE_TMP_PREFIX" << 'EOS'
 set -euo pipefail
 
 SUDO_PASSWORD="$1"
