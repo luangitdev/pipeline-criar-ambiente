@@ -43,12 +43,6 @@ pipeline {
             trim: true
         )
         string(
-            name: 'WAR_FILE_PATH',
-            defaultValue: '',
-            description: 'Caminho para arquivo .war local (opcional, override técnico)',
-            trim: true
-        )
-        string(
             name: 'TOMCAT_VOLUME',
             defaultValue: '',
             description: 'Nome do volume Docker do Tomcat (ex: ptf-routing_tomcat-v15_8081)',
@@ -484,20 +478,17 @@ ENDCREATE
                                 ARTIFACT_WAR="\${ARTIFACT_DIR}/app.war"
                                 mkdir -p "\${ARTIFACT_DIR}"
 
-                                if [ -n "${params.WAR_FILE_PATH}" ]; then
-                                    echo "📦 Usando WAR override informado em WAR_FILE_PATH"
-                                    cp "${params.WAR_FILE_PATH}" "\${ARTIFACT_WAR}"
-                                else
-                                    echo "📦 Construindo WAR da aplicação a partir do repositório ${env.APP_REPO_URL}"
-                                    ${SCRIPTS_PATH}/build_app_artifact.sh \\
-                                        --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
-                                        --repo-url "${env.APP_REPO_URL}" \\
-                                        --repo-branch "${env.APP_REPO_BRANCH}" \\
-                                        --output-war "\${ARTIFACT_WAR}" \\
-                                        --workspace "${WORKSPACE}" \\
-                                        --git-username "\${APP_GIT_USER}" \\
-                                        --git-token "\${APP_GIT_TOKEN}"
-                                fi
+                                echo "📦 Construindo WAR da aplicação a partir do repositório ${env.APP_REPO_URL}"
+                                echo "🔖 Aplicando versão da app igual a VERSAO_DESEJADA: ${params.VERSAO_DESEJADA}"
+                                ${SCRIPTS_PATH}/build_app_artifact.sh \\
+                                    --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
+                                    --repo-url "${env.APP_REPO_URL}" \\
+                                    --repo-branch "${env.APP_REPO_BRANCH}" \\
+                                    --app-version "${params.VERSAO_DESEJADA}" \\
+                                    --output-war "\${ARTIFACT_WAR}" \\
+                                    --workspace "${WORKSPACE}" \\
+                                    --git-username "\${APP_GIT_USER}" \\
+                                    --git-token "\${APP_GIT_TOKEN}"
 
                                 if [ ! -f "\${ARTIFACT_WAR}" ]; then
                                     echo "❌ ERRO: WAR final não encontrado em \${ARTIFACT_WAR}"

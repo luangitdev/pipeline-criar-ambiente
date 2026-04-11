@@ -63,7 +63,6 @@ pipelineCriarAmbiente/
 | `SERVIDOR` | Choice | Servidor de destino | `gcp01`, `gcp02`, `local01` |
 | `NOME_BANCO` | String | Nome do banco | `meu_projeto_teste` |
 | `VERSAO_DESEJADA` | String | Versão alvo | `15.13.1.0-1` |
-| `WAR_FILE_PATH` | String | Caminho do WAR | `/path/to/app.war` |
 | `DEPLOY_PATH` | String | Caminho de deploy | `/opt/applications` |
 | `CRIAR_BANCO` | Boolean | Executar criação BD | `true`/`false` |
 | `DEPLOY_APP` | Boolean | Executar deploy app | `true`/`false` |
@@ -90,7 +89,6 @@ TIPO_AMBIENTE: ptf
 SERVIDOR: gcp01
 NOME_BANCO: projeto_teste
 VERSAO_DESEJADA: 15.13.1.0-1
-WAR_FILE_PATH: /jenkins/workspace/build-app/target/app.war
 DEPLOY_PATH: /opt/applications
 CRIAR_BANCO: true
 DEPLOY_APP: true

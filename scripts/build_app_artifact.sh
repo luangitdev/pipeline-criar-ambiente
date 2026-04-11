@@ -27,6 +27,7 @@ log_error() {
 TIPO_AMBIENTE=""
 REPO_URL=""
 REPO_BRANCH=""
+APP_VERSION=""
 OUTPUT_WAR=""
 WORKSPACE=""
 GIT_USERNAME=""
@@ -44,6 +45,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --repo-branch)
             REPO_BRANCH="$2"
+            shift 2
+            ;;
+        --app-version)
+            APP_VERSION="$2"
             shift 2
             ;;
         --output-war)
@@ -69,7 +74,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$TIPO_AMBIENTE" || -z "$REPO_URL" || -z "$REPO_BRANCH" || -z "$OUTPUT_WAR" || -z "$WORKSPACE" || -z "$GIT_USERNAME" || -z "$GIT_TOKEN" ]]; then
+if [[ -z "$TIPO_AMBIENTE" || -z "$REPO_URL" || -z "$REPO_BRANCH" || -z "$APP_VERSION" || -z "$OUTPUT_WAR" || -z "$WORKSPACE" || -z "$GIT_USERNAME" || -z "$GIT_TOKEN" ]]; then
     log_error "Parâmetros obrigatórios faltando para build do artefato."
     exit 1
 fi
@@ -82,12 +87,54 @@ rm -rf "$REPO_DIR"
 log "📥 Clonando aplicação (${TIPO_AMBIENTE})"
 log "   - URL: $REPO_URL"
 log "   - Branch: $REPO_BRANCH"
+log "   - Versão desejada da app: $APP_VERSION"
 AUTH_B64="$(printf '%s:%s' "$GIT_USERNAME" "$GIT_TOKEN" | base64 | tr -d '\n')"
-git -c http.extraHeader="Authorization: Basic ${AUTH_B64}" \
-    clone --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$REPO_DIR"
+git_with_auth() {
+    git -c http.extraHeader="Authorization: Basic ${AUTH_B64}" "$@"
+}
+
+git_with_auth clone --no-checkout --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$REPO_DIR"
 
 build_ok=false
 pushd "$REPO_DIR" >/dev/null
+
+resolved_ref=""
+tag_ref=""
+branch_ref=""
+
+for candidate in "$APP_VERSION" "v$APP_VERSION"; do
+    if git_with_auth ls-remote --exit-code --tags origin "refs/tags/${candidate}" >/dev/null 2>&1; then
+        tag_ref="$candidate"
+        break
+    fi
+done
+
+if [[ -n "$tag_ref" ]]; then
+    log "🔖 Usando tag da aplicação: $tag_ref"
+    git_with_auth fetch --depth 1 origin "refs/tags/${tag_ref}:refs/tags/${tag_ref}"
+    git checkout -q "tags/${tag_ref}"
+    resolved_ref="tag:${tag_ref}"
+else
+    for candidate in "$APP_VERSION" "v$APP_VERSION"; do
+        if git_with_auth ls-remote --exit-code --heads origin "refs/heads/${candidate}" >/dev/null 2>&1; then
+            branch_ref="$candidate"
+            break
+        fi
+    done
+    if [[ -n "$branch_ref" ]]; then
+        log "🌿 Usando branch da aplicação: $branch_ref"
+        git_with_auth fetch --depth 1 origin "refs/heads/${branch_ref}:refs/remotes/origin/${branch_ref}"
+        git checkout -q "origin/${branch_ref}"
+        resolved_ref="branch:${branch_ref}"
+    else
+        log_error "Versão da aplicação '${APP_VERSION}' não encontrada como tag nem branch no repositório."
+        log_error "Tentativas realizadas: '${APP_VERSION}' e 'v${APP_VERSION}'."
+        popd >/dev/null
+        exit 1
+    fi
+fi
+
+log_success "Ref da aplicação resolvida: ${resolved_ref}"
 
 if [[ -x "./mvnw" ]]; then
     log "🔨 Build com Maven Wrapper"

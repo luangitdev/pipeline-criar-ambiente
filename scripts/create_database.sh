@@ -40,6 +40,7 @@ DB_USER=""
 DB_PASSWORD=""
 WORKSPACE=""
 UPDATES_DIR_OVERRIDE=""
+ALLOW_EXISTING_DB="${ALLOW_EXISTING_DB:-false}"
 
 # Parse de argumentos
 while [[ $# -gt 0 ]]; do
@@ -293,7 +294,15 @@ log "🗄️ Criando banco $NOME_BANCO no servidor de destino..."
 # Primeiro verificar se o banco já existe no destino
 # Conectar no template para fazer a verificação
 if run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "\l" | grep -qw "$NOME_BANCO"; then
-    log_warning "Banco $NOME_BANCO já existe no servidor de destino, continuando..."
+    if [[ "$ALLOW_EXISTING_DB" == "true" ]]; then
+        log_warning "Banco $NOME_BANCO já existe no servidor de destino e ALLOW_EXISTING_DB=true; continuando sem recriar."
+    else
+        log_error "Banco $NOME_BANCO já existe no servidor de destino."
+        log_error "Não é possível garantir a versão final desejada ($VERSAO_DESEJADA) sem recriar o banco."
+        log_error "Use um novo nome de banco ou remova o banco existente antes de executar o pipeline."
+        log_error "Se precisar manter o comportamento antigo, execute com ALLOW_EXISTING_DB=true."
+        exit 1
+    fi
 else
     # Criar banco vazio no destino
     log "📄 Criando banco vazio no destino..."
