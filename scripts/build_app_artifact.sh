@@ -101,36 +101,94 @@ pushd "$REPO_DIR" >/dev/null
 resolved_ref=""
 tag_ref=""
 branch_ref=""
+tag_ref_full=""
+branch_ref_full=""
+commit_ref=""
+version_pattern="(v)?${APP_VERSION//./\\.}"
 
 for candidate in "$APP_VERSION" "v$APP_VERSION"; do
     if git_with_auth ls-remote --exit-code --tags origin "refs/tags/${candidate}" >/dev/null 2>&1; then
         tag_ref="$candidate"
+        tag_ref_full="refs/tags/${candidate}"
         break
     fi
 done
 
+if [[ -z "$tag_ref_full" ]]; then
+    mapfile -t matching_tags < <(
+        git_with_auth ls-remote --tags --refs origin \
+            | awk '{print $2}' \
+            | grep -E "(/${version_pattern}|^refs/tags/${version_pattern})$" || true
+    )
+    if [[ "${#matching_tags[@]}" -eq 1 ]]; then
+        tag_ref_full="${matching_tags[0]}"
+        tag_ref="${tag_ref_full#refs/tags/}"
+    elif [[ "${#matching_tags[@]}" -gt 1 ]]; then
+        log_error "Mais de uma tag corresponde à versão '${APP_VERSION}':"
+        printf '%s\n' "${matching_tags[@]}" | sed 's/^/  - /'
+        log_error "Use APP_REPO_BRANCH_OVERRIDE para fixar a origem da app."
+        popd >/dev/null
+        exit 1
+    fi
+fi
+
 if [[ -n "$tag_ref" ]]; then
     log "🔖 Usando tag da aplicação: $tag_ref"
-    git_with_auth fetch --depth 1 origin "refs/tags/${tag_ref}:refs/tags/${tag_ref}"
+    git_with_auth fetch --depth 1 origin "${tag_ref_full}:${tag_ref_full}"
     git checkout -q "tags/${tag_ref}"
     resolved_ref="tag:${tag_ref}"
 else
     for candidate in "$APP_VERSION" "v$APP_VERSION"; do
         if git_with_auth ls-remote --exit-code --heads origin "refs/heads/${candidate}" >/dev/null 2>&1; then
             branch_ref="$candidate"
+            branch_ref_full="refs/heads/${candidate}"
             break
         fi
     done
+
+    if [[ -z "$branch_ref_full" ]]; then
+        mapfile -t matching_branches < <(
+            git_with_auth ls-remote --heads origin \
+                | awk '{print $2}' \
+                | grep -E "(/${version_pattern}|^refs/heads/${version_pattern})$" || true
+        )
+        if [[ "${#matching_branches[@]}" -eq 1 ]]; then
+            branch_ref_full="${matching_branches[0]}"
+            branch_ref="${branch_ref_full#refs/heads/}"
+        elif [[ "${#matching_branches[@]}" -gt 1 ]]; then
+            log_error "Mais de uma branch corresponde à versão '${APP_VERSION}':"
+            printf '%s\n' "${matching_branches[@]}" | sed 's/^/  - /'
+            log_error "Use APP_REPO_BRANCH_OVERRIDE para fixar a origem da app."
+            popd >/dev/null
+            exit 1
+        fi
+    fi
+
     if [[ -n "$branch_ref" ]]; then
         log "🌿 Usando branch da aplicação: $branch_ref"
-        git_with_auth fetch --depth 1 origin "refs/heads/${branch_ref}:refs/remotes/origin/${branch_ref}"
+        git_with_auth fetch --depth 1 origin "${branch_ref_full}:refs/remotes/origin/${branch_ref}"
         git checkout -q "origin/${branch_ref}"
         resolved_ref="branch:${branch_ref}"
     else
-        log_error "Versão da aplicação '${APP_VERSION}' não encontrada como tag nem branch no repositório."
-        log_error "Tentativas realizadas: '${APP_VERSION}' e 'v${APP_VERSION}'."
-        popd >/dev/null
-        exit 1
+        if git_with_auth ls-remote --exit-code origin "$APP_VERSION" >/dev/null 2>&1; then
+            commit_ref="$APP_VERSION"
+        elif [[ "$APP_VERSION" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+            if git_with_auth fetch --depth 1 origin "$APP_VERSION" >/dev/null 2>&1; then
+                commit_ref="$APP_VERSION"
+            fi
+        fi
+
+        if [[ -n "$commit_ref" ]]; then
+            log "🧬 Usando commit da aplicação: $commit_ref"
+            git_with_auth fetch --depth 1 origin "$commit_ref"
+            git checkout -q FETCH_HEAD
+            resolved_ref="commit:${commit_ref}"
+        else
+            log_error "Versão da aplicação '${APP_VERSION}' não encontrada como tag, branch ou commit no repositório."
+            log_error "Tentativas realizadas: '${APP_VERSION}' e 'v${APP_VERSION}'."
+            popd >/dev/null
+            exit 1
+        fi
     fi
 fi
 
