@@ -37,9 +37,15 @@ pipeline {
             trim: true
         )
         string(
-            name: 'VERSAO_DESEJADA',
+            name: 'VERSAO_BANCO',
             defaultValue: '15.13.1.0-1',
-            description: 'Versão desejada do banco (ex: 15.13.1.0-1)',
+            description: 'Versão alvo do banco (ex: 15.13.1.0-1)',
+            trim: true
+        )
+        string(
+            name: 'VERSAO_APP',
+            defaultValue: '',
+            description: 'Versão/ref da aplicação (tag/branch/commit). Se vazio, usa VERSAO_BANCO',
             trim: true
         )
         string(
@@ -148,7 +154,8 @@ Razao Social: <razão social>'''
                     echo "   - Servidor: ${params.SERVIDOR}"
                     echo "   - Deploy Target: ${params.DEPLOY_TARGET}"
                     echo "   - Nome Banco: ${params.NOME_BANCO}"
-                    echo "   - Versão: ${params.VERSAO_DESEJADA}"
+                    echo "   - Versão Banco: ${params.VERSAO_BANCO}"
+                    echo "   - Versão App: ${params.VERSAO_APP}"
                     echo "   - Criar Banco: ${params.CRIAR_BANCO}"
                     echo "   - Deploy App: ${params.DEPLOY_APP}"
                     echo "   - Tomcat Volume: ${params.TOMCAT_VOLUME}"
@@ -161,9 +168,8 @@ Razao Social: <razão social>'''
                         error("❌ Nome do banco é obrigatório!")
                     }
                     
-                    if (!params.VERSAO_DESEJADA || params.VERSAO_DESEJADA.trim() == '') {
-                        error("❌ Versão desejada é obrigatória!")
-                    }
+                    def versaoBanco = params.VERSAO_BANCO?.trim()
+                    def versaoAppParam = params.VERSAO_APP?.trim()
                     
                     // Definir nome customizado para o build
                     currentBuild.displayName = "#${BUILD_NUMBER} - ${params.NOME_BANCO}"
@@ -192,9 +198,18 @@ Razao Social: <razão social>'''
 
                         env.DEPLOY_SERVER_NAME = parts[0].trim()
                         env.DEPLOY_SERVER_IP = ip
+                        env.APP_VERSION_RESOLVED = versaoAppParam ? versaoAppParam : versaoBanco
+                        if (!env.APP_VERSION_RESOLVED?.trim()) {
+                            error("❌ VERSAO_APP é obrigatória quando DEPLOY_APP=true e VERSAO_BANCO está vazia.")
+                        }
                     } else {
                         env.DEPLOY_SERVER_NAME = ''
                         env.DEPLOY_SERVER_IP = ''
+                        env.APP_VERSION_RESOLVED = ''
+                    }
+
+                    if (params.CRIAR_BANCO && !versaoBanco) {
+                        error("❌ VERSAO_BANCO é obrigatória quando CRIAR_BANCO=true.")
                     }
 
                     if (params.CRIAR_BANCO && params.SINCRONIZAR_UPDATES_INFRA && (!params.INFRA_REPO_CREDENTIALS_ID || params.INFRA_REPO_CREDENTIALS_ID.trim() == '')) {
@@ -210,7 +225,7 @@ Razao Social: <razão social>'''
                         def normalizeVersion = { String versionValue ->
                             def matcher = (versionValue =~ /^(\d+)\.(\d+)\.(\d+)\.(\d+)-(\d+)$/)
                             if (!matcher.matches()) {
-                                error("❌ VERSAO_DESEJADA inválida: '${versionValue}'. Use N.N.N.N-N.")
+                                error("❌ VERSAO_BANCO inválida: '${versionValue}'. Use N.N.N.N-N.")
                             }
                             return [
                                 matcher[0][1].toInteger(),
@@ -234,11 +249,11 @@ Razao Social: <razão social>'''
                         }
 
                         def minVersion = minByAmbiente[params.TIPO_AMBIENTE]
-                        def desiredTokens = normalizeVersion(params.VERSAO_DESEJADA.trim())
+                        def desiredTokens = normalizeVersion(versaoBanco)
                         def minTokens = normalizeVersion(minVersion)
 
                         if (isLowerThan(desiredTokens, minTokens)) {
-                            error("❌ VERSAO_DESEJADA (${params.VERSAO_DESEJADA}) é menor que o piso permitido para ${params.TIPO_AMBIENTE}: ${minVersion}.")
+                            error("❌ VERSAO_BANCO (${versaoBanco}) é menor que o piso permitido para ${params.TIPO_AMBIENTE}: ${minVersion}.")
                         }
                     }
                     
@@ -260,6 +275,7 @@ Razao Social: <razão social>'''
                     if (params.DEPLOY_APP) {
                         echo "✅ Deploy Target resolvido: ${env.DEPLOY_SERVER_NAME} (${env.DEPLOY_SERVER_IP})"
                         echo "✅ Repositório da aplicação: ${env.APP_REPO_URL} [branch: ${env.APP_REPO_BRANCH}]"
+                        echo "✅ Versão efetiva da aplicação: ${env.APP_VERSION_RESOLVED}"
                     }
                 }
             }
@@ -399,7 +415,7 @@ echo "=== DEBUG - Variáveis do Pipeline ==="
 echo "TIPO_AMBIENTE: ${params.TIPO_AMBIENTE}"
 echo "SERVIDOR: ${params.SERVIDOR}"
 echo "NOME_BANCO: ${params.NOME_BANCO}"
-echo "VERSAO_DESEJADA: ${params.VERSAO_DESEJADA}"
+echo "VERSAO_BANCO: ${params.VERSAO_BANCO}"
 echo "DB_HOST: ${env.DB_HOST}"
 echo "DB_PORT: ${env.DB_PORT}"
 echo "DB_USER: ${DB_USER}"
@@ -413,7 +429,7 @@ echo "================================="
     --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
     --servidor "${params.SERVIDOR}" \\
     --nome-banco "${params.NOME_BANCO}" \\
-    --versao-desejada "${params.VERSAO_DESEJADA}" \\
+    --versao-banco "${params.VERSAO_BANCO}" \\
     --db-host "${env.DB_HOST}" \\
     --db-port "${env.DB_PORT}" \\
     --db-user "${DB_USER}" \\
@@ -479,12 +495,12 @@ ENDCREATE
                                 mkdir -p "\${ARTIFACT_DIR}"
 
                                 echo "📦 Construindo WAR da aplicação a partir do repositório ${env.APP_REPO_URL}"
-                                echo "🔖 Aplicando versão da app igual a VERSAO_DESEJADA: ${params.VERSAO_DESEJADA}"
+                                echo "🔖 Aplicando versão/ref da app: ${env.APP_VERSION_RESOLVED}"
                                 ${SCRIPTS_PATH}/build_app_artifact.sh \\
                                     --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
                                     --repo-url "${env.APP_REPO_URL}" \\
                                     --repo-branch "${env.APP_REPO_BRANCH}" \\
-                                    --app-version "${params.VERSAO_DESEJADA}" \\
+                                    --app-version "${env.APP_VERSION_RESOLVED}" \\
                                     --output-war "\${ARTIFACT_WAR}" \\
                                     --workspace "${WORKSPACE}" \\
                                     --git-username "\${APP_GIT_USER}" \\
@@ -738,7 +754,8 @@ EOF
    - Servidor: ${params.SERVIDOR}
    - Deploy Target: ${params.DEPLOY_TARGET}
    - Banco: ${params.NOME_BANCO}
-   - Versão: ${params.VERSAO_DESEJADA}
+   - Versão Banco: ${params.VERSAO_BANCO}
+   - Versão App: ${params.VERSAO_APP ? params.VERSAO_APP : params.VERSAO_BANCO}
    - Criou Banco: ${params.CRIAR_BANCO ? 'Sim' : 'Não'}
    - Deploy App: ${params.DEPLOY_APP ? 'Sim' : 'Não'}
    - Tomcat Volume: ${params.TOMCAT_VOLUME}

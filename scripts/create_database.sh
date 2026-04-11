@@ -33,7 +33,7 @@ log_warning() {
 TIPO_AMBIENTE=""
 SERVIDOR=""
 NOME_BANCO=""
-VERSAO_DESEJADA=""
+VERSAO_BANCO=""
 DB_HOST=""
 DB_PORT="5432"
 DB_USER=""
@@ -57,8 +57,8 @@ while [[ $# -gt 0 ]]; do
             NOME_BANCO="$2"
             shift 2
             ;;
-        --versao-desejada)
-            VERSAO_DESEJADA="$2"
+        --versao-banco|--versao-desejada)
+            VERSAO_BANCO="$2"
             shift 2
             ;;
         --db-host)
@@ -147,17 +147,17 @@ log "   - Ambiente: $TIPO_AMBIENTE"
 log "   - Servidor: $SERVIDOR"
 log "   - Banco: $NOME_BANCO"
 log "   - Host: $DB_HOST:$DB_PORT"
-log "   - Versão: $VERSAO_DESEJADA"
+log "   - Versão banco: $VERSAO_BANCO"
 if [[ -n "$UPDATES_DIR_OVERRIDE" ]]; then
     log "   - Updates dir (override): $UPDATES_DIR_OVERRIDE"
 fi
 
-if ! normalized_desired_version=$(extract_version_token "$VERSAO_DESEJADA"); then
-    log_error "Versão desejada inválida: '$VERSAO_DESEJADA' (esperado formato N.N.N.N-N)"
+if ! normalized_desired_version=$(extract_version_token "$VERSAO_BANCO"); then
+    log_error "Versão de banco inválida: '$VERSAO_BANCO' (esperado formato N.N.N.N-N)"
     exit 1
 fi
-VERSAO_DESEJADA="$normalized_desired_version"
-log "📋 Versão desejada normalizada: $VERSAO_DESEJADA"
+VERSAO_BANCO="$normalized_desired_version"
+log "📋 Versão de banco normalizada: $VERSAO_BANCO"
 
 # Definir template baseado no ambiente
 if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
@@ -298,7 +298,7 @@ if run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d
         log_warning "Banco $NOME_BANCO já existe no servidor de destino e ALLOW_EXISTING_DB=true; continuando sem recriar."
     else
         log_error "Banco $NOME_BANCO já existe no servidor de destino."
-        log_error "Não é possível garantir a versão final desejada ($VERSAO_DESEJADA) sem recriar o banco."
+        log_error "Não é possível garantir a versão final desejada ($VERSAO_BANCO) sem recriar o banco."
         log_error "Use um novo nome de banco ou remova o banco existente antes de executar o pipeline."
         log_error "Se precisar manter o comportamento antigo, execute com ALLOW_EXISTING_DB=true."
         exit 1
@@ -426,22 +426,22 @@ if [[ -d "$UPDATES_DIR" ]]; then
             # Verificar se update deve ser aplicado usando comparação numérica de versões
             # Condição: versão do update > versão atual E versão do update <= versão desejada
             comp_atual=$(compare_versions "$update_version" "$VERSAO_ATUAL")
-            comp_desejada=$(compare_versions "$update_version" "$VERSAO_DESEJADA")
+            comp_desejada=$(compare_versions "$update_version" "$VERSAO_BANCO")
             
-            # update_version > VERSAO_ATUAL AND update_version <= VERSAO_DESEJADA
+            # update_version > VERSAO_ATUAL AND update_version <= VERSAO_BANCO
             if [[ "$comp_atual" == "1" ]] && [[ "$comp_desejada" == "-1" || "$comp_desejada" == "0" ]]; then
                 eligible_update_files+=("$update_file")
             else
-                log "⏭️ Pulando update $update_label [versão: $update_version] (fora do intervalo: $VERSAO_ATUAL < x <= $VERSAO_DESEJADA)"
+                log "⏭️ Pulando update $update_label [versão: $update_version] (fora do intervalo: $VERSAO_ATUAL < x <= $VERSAO_BANCO)"
                 log "🔍 DEBUG: comp_atual=$comp_atual, comp_desejada=$comp_desejada"
             fi
         fi
     done
 
     if [[ "${#eligible_update_files[@]}" -eq 0 ]]; then
-        log_warning "Nenhum update encontrado dentro do intervalo: $VERSAO_ATUAL < x <= $VERSAO_DESEJADA"
+        log_warning "Nenhum update encontrado dentro do intervalo: $VERSAO_ATUAL < x <= $VERSAO_BANCO"
     else
-        log "📌 Versões dentro do intervalo ($VERSAO_ATUAL < x <= $VERSAO_DESEJADA):"
+        log "📌 Versões dentro do intervalo ($VERSAO_ATUAL < x <= $VERSAO_BANCO):"
         for update_file in "${eligible_update_files[@]}"; do
             update_label=$(basename "$update_file" .sql)
             update_version=$(extract_version_token "$update_label" || echo "$update_label")
@@ -452,7 +452,7 @@ if [[ -d "$UPDATES_DIR" ]]; then
     for update_file in "${eligible_update_files[@]}"; do
         update_label=$(basename "$update_file" .sql)
         update_version=$(extract_version_token "$update_label" || echo "$update_label")
-        log "🔄 Aplicando update: $update_label [versão: $update_version] (atual: $VERSAO_ATUAL, desejada: $VERSAO_DESEJADA)"
+        log "🔄 Aplicando update: $update_label [versão: $update_version] (atual: $VERSAO_ATUAL, desejada: $VERSAO_BANCO)"
         if execute_sql_file "$update_file" "$NOME_BANCO"; then
             ((UPDATE_COUNT++))
             log_success "Update $update_version aplicado"
@@ -484,5 +484,5 @@ log_success "🎉 Criação do banco de dados concluída com sucesso!"
 log "📋 Resumo:"
 log "   - Banco: $NOME_BANCO"
 log "   - Versão inicial: $VERSAO_ATUAL"
-log "   - Versão final: $VERSAO_DESEJADA"
+log "   - Versão final: $VERSAO_BANCO"
 log "   - Updates aplicados: $UPDATE_COUNT"
