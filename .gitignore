@@ -15,4 +15,4 @@ erro.log
 
 # Modelos
 *.codex
-*SPEC.md
+*SPEC*.md
