@@ -2,27 +2,8 @@
 
 set -euo pipefail
 
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-log() {
-    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] ✅ $1${NC}"
-}
-
-log_error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1${NC}" >&2
-}
-
-log_warning() {
-    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️ $1${NC}"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/log_utils.sh"
 
 DEPLOY_SERVER_NAME=""
 DEPLOY_SERVER_IP=""
@@ -81,8 +62,7 @@ fi
 TARGET_BASE="/var/lib/docker/volumes/${TOMCAT_VOLUME}/_data"
 TARGET_APP_DIR="${TARGET_BASE}/${APP_NAME}"
 
-log "🔍 Verificando deploy remoto: ${DEPLOY_SERVER_NAME} (${DEPLOY_SERVER_IP})"
-log "📂 Caminho esperado: ${TARGET_APP_DIR}"
+log "🔍 Verificando deploy '$APP_NAME' em $DEPLOY_SERVER_NAME ($DEPLOY_SERVER_IP) — $TARGET_APP_DIR"
 
 ssh "${SSH_OPTS[@]}" "infra@${DEPLOY_SERVER_IP}" "bash -s" -- "$SUDO_PASSWORD" "$TARGET_BASE" "$TARGET_APP_DIR" << 'EOS'
 set -euo pipefail
@@ -96,37 +76,36 @@ run_sudo() {
 }
 
 if ! run_sudo test -d "$TARGET_BASE"; then
-    echo "❌ Volume tomcat não encontrado: $TARGET_BASE"
+    echo "[REMOTE] ❌ Volume tomcat não encontrado: $TARGET_BASE"
     exit 1
 fi
 
 if ! run_sudo test -d "$TARGET_APP_DIR"; then
-    echo "❌ Diretório da aplicação não encontrado: $TARGET_APP_DIR"
+    echo "[REMOTE] ❌ Diretório da aplicação não encontrado: $TARGET_APP_DIR"
     exit 1
 fi
 
 FILE_COUNT=$(run_sudo find "$TARGET_APP_DIR" -type f | wc -l | tr -d ' ')
 DIR_SIZE=$(run_sudo du -sh "$TARGET_APP_DIR" | awk '{print $1}')
 
-echo "✅ Diretório da aplicação encontrado"
-echo "📊 Total de arquivos: $FILE_COUNT"
-echo "📦 Tamanho total: $DIR_SIZE"
+echo "[REMOTE] ✅ Diretório da aplicação encontrado"
+echo "[REMOTE] 📈 Arquivos: $FILE_COUNT | Tamanho: $DIR_SIZE"
 
 if [[ "$FILE_COUNT" -lt 10 ]]; then
-    echo "⚠️ Poucos arquivos no diretório da aplicação; valide extração/publicação"
+    echo "[REMOTE] ⚠️ Poucos arquivos no diretório da aplicação; valide extração/publicação"
 fi
 
 if run_sudo find "$TARGET_APP_DIR" -type f -name "login.properties" | grep -q .; then
-    echo "✅ login.properties localizado"
+    echo "[REMOTE] ✅ login.properties localizado"
 else
-    echo "⚠️ login.properties não encontrado"
+    echo "[REMOTE] ⚠️ login.properties não encontrado"
 fi
 
 if run_sudo find "$TARGET_APP_DIR" -type f -name "application.properties" | grep -q .; then
-    echo "✅ application.properties localizado"
+    echo "[REMOTE] ✅ application.properties localizado"
 else
-    echo "⚠️ application.properties não encontrado"
+    echo "[REMOTE] ⚠️ application.properties não encontrado"
 fi
 EOS
 
-log_success "Verificação de deploy concluída com sucesso"
+log_success "Verificação de deploy de '$APP_NAME' concluída em $DEPLOY_SERVER_NAME"

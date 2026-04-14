@@ -2,27 +2,8 @@
 
 set -euo pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-log() {
-    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] ✅ $1${NC}"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️ $1${NC}"
-}
-
-log_error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1${NC}" >&2
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/log_utils.sh"
 
 TIPO_AMBIENTE=""
 REPO_URL=""
@@ -84,10 +65,7 @@ REPO_DIR="${BUILD_ROOT}/repo"
 mkdir -p "$BUILD_ROOT"
 rm -rf "$REPO_DIR"
 
-log "📥 Clonando aplicação (${TIPO_AMBIENTE})"
-log "   - URL: $REPO_URL"
-log "   - Branch: $REPO_BRANCH"
-log "   - Versão desejada da app: $APP_VERSION"
+log "📥 Clonando '$REPO_URL' [$TIPO_AMBIENTE] branch '$REPO_BRANCH' — versão: $APP_VERSION"
 AUTH_B64="$(printf '%s:%s' "$GIT_USERNAME" "$GIT_TOKEN" | base64 | tr -d '\n')"
 git_with_auth() {
     git -c http.extraHeader="Authorization: Basic ${AUTH_B64}" "$@"

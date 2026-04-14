@@ -9,18 +9,8 @@ DADOS_FILE="$1"
 TIPO_AMBIENTE="$2"
 OUTPUT_DIR="$3"
 
-# Cores para output
-BLUE='\033[0;34m'
-GREEN='\033[0;32m'
-NC='\033[0m'
-
-log() {
-    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] ✅ $1${NC}"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/log_utils.sh"
 
 log "🔄 Gerando start.sql personalizado..."
 
@@ -83,7 +73,7 @@ if [[ -f "$DADOS_FILE" ]]; then
     
     log_success "Dados processados com sucesso"
 else
-    log "⚠️ Arquivo de dados não encontrado, usando valores padrão"
+    log_warning "Arquivo de dados não encontrado, usando valores padrão"
 fi
 
 # Gerar SQL baseado no template
@@ -198,9 +188,3 @@ EOF
 fi
 
 log_success "Arquivo start.sql gerado: $OUTPUT_FILE"
-log "📊 Dados utilizados:"
-log "   - Endereço: $ENDERECO"
-log "   - Cidade: $CIDADE"
-log "   - Estado: $ESTADO"
-log "   - CNPJ: $CNPJ"
-log "   - Razão Social: $RAZAO_SOCIAL"

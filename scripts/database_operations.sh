@@ -3,7 +3,10 @@
 # Script para operações de banco via bastion host
 # Assume que o bastion já tem acesso direto aos bancos
 
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/log_utils.sh"
 
 DB_HOST=""
 DB_PORT="5432"
@@ -40,7 +43,7 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         *)
-            echo "Parâmetro desconhecido: $1"
+            log_error "Parâmetro desconhecido: $1"
             exit 1
             ;;
     esac
@@ -51,40 +54,39 @@ export PGPASSWORD="$DB_PASSWORD"
 
 case $OPERATION in
     "create")
-        echo "🗄️ Criando banco de dados: $DB_NAME"
+        log "🗄️ Criando banco '$DB_NAME' em $DB_HOST:$DB_PORT..."
         createdb -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" "$DB_NAME"
-        echo "✅ Banco $DB_NAME criado com sucesso!"
+        log_success "Banco '$DB_NAME' criado"
         ;;
     
     "backup")
-        echo "💾 Executando backup do banco: $DB_NAME"
+        log "💾 Executando backup de '$DB_NAME'..."
         pg_dump -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" > "/tmp/${DB_NAME}_backup_$(date +%Y%m%d_%H%M%S).sql"
-        echo "✅ Backup concluído!"
+        log_success "Backup de '$DB_NAME' concluído"
         ;;
     
     "restore")
         BACKUP_FILE="$5"  # Arquivo de backup
-        echo "🔄 Restaurando banco $DB_NAME do arquivo: $BACKUP_FILE"
+        log "🔄 Restaurando '$DB_NAME' de: $BACKUP_FILE"
         psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" < "$BACKUP_FILE"
-        echo "✅ Restore concluído!"
+        log_success "Restore de '$DB_NAME' concluído"
         ;;
     
     "execute_sql")
         SQL_FILE="$5"  # Arquivo SQL para executar
-        echo "📝 Executando SQL: $SQL_FILE"
+        log "📝 Executando SQL: $SQL_FILE"
         psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d "$DB_NAME" -f "$SQL_FILE"
-        echo "✅ SQL executado com sucesso!"
+        log_success "SQL executado: $SQL_FILE"
         ;;
     
     "test_connection")
-        echo "🔍 Testando conexão com o banco..."
+        log "🔍 Testando conexão em $DB_HOST:$DB_PORT (banco: $DB_NAME)..."
         psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USER" -d postgres -c "SELECT version();"
-        echo "✅ Conexão OK!"
+        log_success "Conexão OK — $DB_HOST:$DB_PORT"
         ;;
     
     *)
-        echo "❌ Operação desconhecida: $OPERATION"
-        echo "Operações disponíveis: create, backup, restore, execute_sql, test_connection"
+        log_error "Operação desconhecida: $OPERATION (disponíveis: create, backup, restore, execute_sql, test_connection)"
         exit 1
         ;;
 esac

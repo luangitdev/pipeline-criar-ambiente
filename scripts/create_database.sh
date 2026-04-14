@@ -5,29 +5,8 @@
 
 set -uo pipefail  # Removido -e para permitir tratamento manual de erros
 
-# Cores para output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
-
-# Função de log
-log() {
-    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] ✅ $1${NC}"
-}
-
-log_error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1${NC}" >&2
-}
-
-log_warning() {
-    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️ $1${NC}"
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/log_utils.sh"
 
 # Variáveis padrão
 TIPO_AMBIENTE=""
@@ -100,7 +79,6 @@ fi
 
 # Proteger senha contra expansão usando base64 encoding
 DB_PASSWORD_ENCODED=$(echo -n "$DB_PASSWORD" | base64)
-log "🔧 Senha codificada em base64 para evitar expansão de caracteres especiais"
 
 # Função para comparar versões numericamente
 # Retorna: 0 se v1 == v2, 1 se v1 > v2, -1 se v1 < v2
@@ -141,23 +119,13 @@ run_psql_safe() {
     PGPASSWORD="$password_decoded" "$@"
 }
 
-log "🚀 INICIANDO CRIAÇÃO DO BANCO DE DADOS"
-log "📋 Configuração:"
-log "   - Ambiente: $TIPO_AMBIENTE"
-log "   - Servidor: $SERVIDOR"
-log "   - Banco: $NOME_BANCO"
-log "   - Host: $DB_HOST:$DB_PORT"
-log "   - Versão banco: $VERSAO_BANCO"
-if [[ -n "$UPDATES_DIR_OVERRIDE" ]]; then
-    log "   - Updates dir (override): $UPDATES_DIR_OVERRIDE"
-fi
+log "🚀 Criando banco '$NOME_BANCO' [$TIPO_AMBIENTE] em $DB_HOST:$DB_PORT — versão alvo: $VERSAO_BANCO"
 
 if ! normalized_desired_version=$(extract_version_token "$VERSAO_BANCO"); then
     log_error "Versão de banco inválida: '$VERSAO_BANCO' (esperado formato N.N.N.N-N)"
     exit 1
 fi
 VERSAO_BANCO="$normalized_desired_version"
-log "📋 Versão de banco normalizada: $VERSAO_BANCO"
 
 # Definir template baseado no ambiente
 if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
@@ -168,8 +136,6 @@ fi
 
 # Permitir override via variável de ambiente (se necessário)
 TEMPLATE_DB="${TEMPLATE_DB_OVERRIDE:-$TEMPLATE_DB}"
-
-log "📋 Template obrigatório: $TEMPLATE_DB"
 
 # Função para executar SQL
 execute_sql() {
@@ -230,27 +196,16 @@ else
 fi
 TEMPLATE_PORT="5432"
 
-log "🔗 Configuração de conexão:"
-log "   - Servidor destino: $EFFECTIVE_HOST:$EFFECTIVE_PORT" 
-log "   - Template source: $TEMPLATE_HOST:$TEMPLATE_PORT ($TEMPLATE_SERVER_NAME)"
+log "🔗 Template: $TEMPLATE_HOST:$TEMPLATE_PORT ($TEMPLATE_SERVER_NAME) → destino: $EFFECTIVE_HOST:$EFFECTIVE_PORT"
 
-# 1. Verificar ambiente e ferramentas
-log "🔧 Verificando ambiente de execução..."
-log "   - Usuário: $(whoami)"
-log "   - Sistema: $(uname -a)"
-log "   - PostgreSQL client: $(which psql 2>/dev/null || echo 'NÃO ENCONTRADO')"
-
+# 1. Verificar ferramentas necessárias
 if ! command -v psql &> /dev/null; then
-    log_error "PostgreSQL client (psql) não está disponível no bastion host!"
-    log_error "Verifique se o postgresql-client está instalado no bastion"
+    log_error "PostgreSQL client (psql) não encontrado no agente"
     exit 1
 fi
 
-log_success "PostgreSQL client encontrado: $(which psql)"
-
 # 2. Testar conexão com o banco antes de prosseguir
-log "🔍 Testando conexão com o servidor de banco..."
-log "🔧 Comando: psql -h $EFFECTIVE_HOST -p $EFFECTIVE_PORT -U $DB_USER -d $TEMPLATE_DB -c \"SELECT 1;\""
+log "🔍 Testando conexão com o servidor de banco em $EFFECTIVE_HOST:$EFFECTIVE_PORT..."
 
 # Usar template database para teste pois usuário pode não ter acesso ao 'postgres'
 # Capturar erro específico usando função segura
@@ -258,20 +213,7 @@ PSQL_ERROR=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$D
 PSQL_EXIT_CODE=$?
 
 if [ $PSQL_EXIT_CODE -ne 0 ]; then
-    log_error "Falha ao conectar com o servidor PostgreSQL em $EFFECTIVE_HOST:$EFFECTIVE_PORT"
-    log_error "Erro específico: $PSQL_ERROR"
-    log_error ""
-    log_error "Verifique se:"
-    log_error "  1. O servidor PostgreSQL está rodando"
-    log_error "  2. O bastion host tem acesso à rede privada"
-    log_error "  3. As credenciais estão corretas (usuário: $DB_USER)"
-    log_error "  4. A porta $EFFECTIVE_PORT está aberta"
-    log_error "  5. O template '$TEMPLATE_DB' existe"
-    
-    # Limpar tunnel se criado
-    if [[ -n "${TUNNEL_PID:-}" ]]; then
-        kill "$TUNNEL_PID" 2>/dev/null || true
-    fi
+    log_error "Falha ao conectar em $EFFECTIVE_HOST:$EFFECTIVE_PORT (usuário: $DB_USER) — $PSQL_ERROR"
     exit 1
 fi
 log_success "Conexão com o servidor estabelecida com sucesso!"
@@ -280,10 +222,7 @@ log_success "Conexão com o servidor estabelecida com sucesso!"
 log "🔍 Verificando se template existe no $TEMPLATE_SERVER_NAME: $TEMPLATE_DB"
 # Conectar no próprio template para verificar se existe e se temos acesso
 if ! run_psql_safe psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
-    log_error "❌ Template '$TEMPLATE_DB' não encontrado ou sem acesso no servidor $TEMPLATE_HOST:$TEMPLATE_PORT ($TEMPLATE_SERVER_NAME)"
-    log_error "💡 Verifique se:"
-    log_error "   - O template '$TEMPLATE_DB' existe no $TEMPLATE_SERVER_NAME"
-    log_error "   - O usuário '$DB_USER' tem acesso ao template"
+    log_error "Template '$TEMPLATE_DB' não encontrado ou sem acesso em $TEMPLATE_HOST:$TEMPLATE_PORT ($TEMPLATE_SERVER_NAME, usuário: $DB_USER)"
     exit 1
 fi
 log_success "Template $TEMPLATE_DB encontrado no $TEMPLATE_SERVER_NAME!"
@@ -350,8 +289,7 @@ elif [[ -f "$DADOS_FILE_DEFAULT" ]]; then
     log "📄 Usando arquivo padrão do ambiente"  
     DADOS_FILE="$DADOS_FILE_DEFAULT"
 else
-    log_error "❌ Nenhum arquivo de dados encontrado!"
-    log_error "   Esperado: $DADOS_FILE_TEMP ou $DADOS_FILE_DEFAULT"
+    log_error "Nenhum arquivo de dados encontrado — esperado: $DADOS_FILE_TEMP ou $DADOS_FILE_DEFAULT"
     exit 1
 fi
 
@@ -399,18 +337,11 @@ else
     VERSAO_ATUAL="9.0.0.0-0"
 fi
 
-log "📋 Versão base considerada: $VERSAO_ATUAL"
-
 # 6. Executar updates necessários
-log "🔄 Executando updates necessários..."
+log "🔄 Executando updates necessários ($VERSAO_ATUAL → $VERSAO_BANCO)..."
 UPDATES_DIR="${UPDATES_DIR_OVERRIDE:-$WORKSPACE/sql/$TIPO_AMBIENTE/updates}"
 if [[ -d "$UPDATES_DIR" ]]; then
-    log "📁 Arquivos encontrados em updates:"
-    ls -la "$UPDATES_DIR/" || log_warning "Erro ao listar updates"
     UPDATE_COUNT=0
-    
-    # Ordenar arquivos por versão (menor -> maior)
-    log "🧭 Ordem de execução dos updates: menor -> maior"
     mapfile -t sorted_updates < <(find "$UPDATES_DIR" -maxdepth 1 -type f -name "*.sql" | sort -V)
 
     eligible_update_files=()
@@ -432,8 +363,7 @@ if [[ -d "$UPDATES_DIR" ]]; then
             if [[ "$comp_atual" == "1" ]] && [[ "$comp_desejada" == "-1" || "$comp_desejada" == "0" ]]; then
                 eligible_update_files+=("$update_file")
             else
-                log "⏭️ Pulando update $update_label [versão: $update_version] (fora do intervalo: $VERSAO_ATUAL < x <= $VERSAO_BANCO)"
-                log "🔍 DEBUG: comp_atual=$comp_atual, comp_desejada=$comp_desejada"
+                log "⏭️ Pulando update $update_version (fora do intervalo $VERSAO_ATUAL < x <= $VERSAO_BANCO)"
             fi
         fi
     done
@@ -480,9 +410,4 @@ fi
 
 # Conexão finalizada
 
-log_success "🎉 Criação do banco de dados concluída com sucesso!"
-log "📋 Resumo:"
-log "   - Banco: $NOME_BANCO"
-log "   - Versão inicial: $VERSAO_ATUAL"
-log "   - Versão final: $VERSAO_BANCO"
-log "   - Updates aplicados: $UPDATE_COUNT"
+log_success "Banco '$NOME_BANCO' criado — versão: $VERSAO_BANCO ($UPDATE_COUNT updates aplicados)"

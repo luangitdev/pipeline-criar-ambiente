@@ -2,27 +2,8 @@
 
 set -euo pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-log() {
-    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] ✅ $1${NC}"
-}
-
-log_warning() {
-    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] ⚠️ $1${NC}"
-}
-
-log_error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1${NC}" >&2
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/log_utils.sh"
 
 escape_sed_replacement() {
     printf '%s' "$1" | sed -e 's/[\\&|]/\\&/g'
@@ -46,6 +27,7 @@ upsert_property() {
 WAR_FILE=""
 NOME_BANCO=""
 DB_HOST=""
+DB_PORT="5432"
 TIPO_AMBIENTE=""
 DEPLOY_SERVER_NAME=""
 DEPLOY_SERVER_IP=""
@@ -67,6 +49,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --db-host)
             DB_HOST="$2"
+            shift 2
+            ;;
+        --db-port)
+            DB_PORT="$2"
             shift 2
             ;;
         --tipo-ambiente)
@@ -149,14 +135,7 @@ case "$DEPLOY_SERVER_NAME" in
         ;;
 esac
 
-log "🚀 INICIANDO DEPLOY DA APLICAÇÃO"
-log "📋 Configuração:"
-log "   - Ambiente: $TIPO_AMBIENTE"
-log "   - Banco: $NOME_BANCO"
-log "   - DB Host: $DB_HOST:5432"
-log "   - Deploy Target: $DEPLOY_SERVER_NAME ($DEPLOY_SERVER_IP)"
-log "   - Tomcat Volume: $TOMCAT_VOLUME"
-log "   - App Name: $APP_NAME"
+log "🚀 Deploy '$APP_NAME' [$TIPO_AMBIENTE] → $DEPLOY_SERVER_NAME ($DEPLOY_SERVER_IP) | banco: $NOME_BANCO em $DB_HOST:$DB_PORT"
 
 STAGING_ROOT="$WORKSPACE/temp/deploy_payload"
 APP_STAGING_DIR="$STAGING_ROOT/$APP_NAME"
@@ -236,7 +215,7 @@ run_sudo() {
 }
 
 if ! run_sudo test -d "$TARGET_BASE"; then
-    echo "❌ Volume do tomcat não encontrado: $TARGET_BASE"
+    echo "[REMOTE] ❌ Volume do tomcat não encontrado: $TARGET_BASE"
     exit 1
 fi
 
@@ -244,13 +223,13 @@ mkdir -p "$REMOTE_TMP_PREFIX"
 tar -xzf "$REMOTE_TAR_FILE" -C "$REMOTE_TMP_PREFIX"
 
 if [[ ! -d "${REMOTE_TMP_PREFIX}/${APP_NAME}" ]]; then
-    echo "❌ Conteúdo extraído inválido: pasta ${APP_NAME} não encontrada"
+    echo "[REMOTE] ❌ Conteúdo extraído inválido: pasta ${APP_NAME} não encontrada"
     exit 1
 fi
 
 if run_sudo test -d "$TARGET_APP_DIR"; then
     run_sudo cp -a "$TARGET_APP_DIR" "$BACKUP_DIR"
-    echo "📦 Backup da aplicação anterior: $BACKUP_DIR"
+    echo "[REMOTE] 📦 Backup da aplicação anterior: $BACKUP_DIR"
 fi
 
 run_sudo rm -rf "$TARGET_APP_DIR"
@@ -262,8 +241,4 @@ rm -rf "$REMOTE_TMP_PREFIX"
 rm -f "$REMOTE_TAR_FILE"
 EOS
 
-log_success "Deploy concluído com sucesso"
-log "📋 Resumo:"
-log "   - Target: ${DEPLOY_SERVER_NAME} (${DEPLOY_SERVER_IP})"
-log "   - Tomcat: /var/lib/docker/volumes/${TOMCAT_VOLUME}/_data"
-log "   - Aplicação: ${APP_NAME}"
+log_success "Deploy de '$APP_NAME' concluído em $DEPLOY_SERVER_NAME — /var/lib/docker/volumes/${TOMCAT_VOLUME}/_data"

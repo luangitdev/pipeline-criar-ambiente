@@ -4,23 +4,8 @@
 
 set -euo pipefail
 
-# Cores
-GREEN='\033[0;32m'
-RED='\033[0;31m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-log() {
-    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
-}
-
-log_success() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] ✅ $1${NC}"
-}
-
-log_error() {
-    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ❌ $1${NC}" >&2
-}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/log_utils.sh"
 
 # Parse argumentos
 while [[ $# -gt 0 ]]; do
@@ -52,14 +37,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-log "🔍 Verificando banco de dados: $NOME_BANCO"
-
 # Configurar conexão (assumindo que o bastion host já tem acesso direto ao DB)
 TUNNEL_PID=""
 EFFECTIVE_HOST="$DB_HOST"
 EFFECTIVE_PORT="$DB_PORT"
 
-log "🔗 Configuração de conexão: $EFFECTIVE_HOST:$EFFECTIVE_PORT"
+log "🔍 Verificando banco '$NOME_BANCO' em $EFFECTIVE_HOST:$EFFECTIVE_PORT"
 
 # Função para executar SQL
 execute_sql() {
@@ -123,9 +106,9 @@ log "📊 Verificando versão do banco..."
 if versao=$(execute_sql "SELECT valor_texto FROM configuracao WHERE nomecampo = 'versao_banco';" 2>/dev/null || echo "N/A"); then
     log_success "Versão do banco: $versao"
 else
-    log "Versão não encontrada (pode ser normal)"
+    log "🔍 Versão não encontrada (pode ser normal)"
 fi
 
 # Conexão finalizada
 
-log_success "✅ Verificação do banco concluída com sucesso!"
+log_success "Verificação do banco '$NOME_BANCO' concluída"
