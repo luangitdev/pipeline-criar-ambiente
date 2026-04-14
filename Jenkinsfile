@@ -7,41 +7,84 @@ pipeline {
             choices: ['PTF', 'PLN'],
             description: 'Tipo do ambiente (PTF ou PLN)'
         )
-        choice(
+        [$class: 'CascadeChoiceParameter',
+            choiceType: 'PT_SINGLE_SELECT',
+            description: 'Servidor de banco de dados (filtrado por tipo de ambiente)',
+            filterable: false,
             name: 'SERVIDOR',
-            choices: ['GCP01', 'GCP02', 'GCP03', 'GCP-PLN'],
-            description: 'Servidor de destino'
-        )
-        choice(
+            referencedParameters: 'TIPO_AMBIENTE',
+            script: [
+                $class: 'GroovyScript',
+                fallbackScript: [classpath: [], sandbox: true, script: 'return ["GCP01"]'],
+                script: [classpath: [], sandbox: true, script: '''
+                    if (TIPO_AMBIENTE == "PLN") {
+                        return ["GCP-PLN"]
+                    } else {
+                        return ["GCP01", "GCP02", "GCP03"]
+                    }
+                ''']
+            ]
+        ]
+        [$class: 'CascadeChoiceParameter',
+            choiceType: 'PT_SINGLE_SELECT',
+            description: 'Servidor de deploy no formato NOME:IP (filtrado por tipo de ambiente)',
+            filterable: false,
             name: 'DEPLOY_TARGET',
-            choices: [
-                'IMP-01:34.95.251.169',
-                'PROD-01:35.247.243.102',
-                'PROD-02:35.199.97.30',
-                'PROD-03:34.95.176.6',
-                'PROD-04:34.151.235.67',
-                'PROD-05:35.247.231.213',
-                'PROD-06:34.151.245.19',
-                'PROD-07:35.199.65.37',
-                'PROD-08:35.199.103.167',
-                'PROD-09:35.199.120.245',
-                'PROD-10:34.95.167.115',
-                'PROD-11:34.39.155.140'
-            ],
-            description: 'Servidor de deploy no formato NOME:IP'
-        )
+            referencedParameters: 'TIPO_AMBIENTE',
+            script: [
+                $class: 'GroovyScript',
+                fallbackScript: [classpath: [], sandbox: true, script: 'return ["N/A"]'],
+                script: [classpath: [], sandbox: true, script: '''
+                    if (TIPO_AMBIENTE == "PLN") {
+                        return [
+                            "PROD-02:34.151.209.238",
+                            "PROD-03:35.199.116.136",
+                            "PROD-04:35.198.30.206",
+                            "PROD-05:34.95.136.178",
+                            "PROD-06:34.95.143.104",
+                            "PROD-07:34.95.181.155"
+                        ]
+                    } else {
+                        return [
+                            "IMP-01:34.95.251.169",
+                            "PROD-01:35.247.243.102",
+                            "PROD-02:35.199.97.30",
+                            "PROD-03:34.95.176.6",
+                            "PROD-04:34.151.235.67",
+                            "PROD-05:35.247.231.213",
+                            "PROD-06:34.151.245.19",
+                            "PROD-07:35.199.65.37",
+                            "PROD-08:35.199.103.167",
+                            "PROD-09:35.199.120.245",
+                            "PROD-10:34.95.167.115",
+                            "PROD-11:34.39.155.140"
+                        ]
+                    }
+                ''']
+            ]
+        ]
         string(
             name: 'NOME_BANCO',
             defaultValue: '',
             description: 'Nome do banco de dados a ser criado',
             trim: true
         )
-        string(
+        [$class: 'DynamicReferenceParameter',
+            choiceType: 'ET_FORMATTED_HTML',
+            description: 'Versão alvo do banco (ex: PTF → 15.13.1.0-1 | PLN → 9.0.1.1-14)',
             name: 'VERSAO_BANCO',
-            defaultValue: '15.13.1.0-1',
-            description: 'Versão alvo do banco (ex: 15.13.1.0-1)',
-            trim: true
-        )
+            omitValueField: false,
+            referencedParameters: 'TIPO_AMBIENTE',
+            script: [
+                $class: 'GroovyScript',
+                fallbackScript: [classpath: [], sandbox: true, script: 'return "<input name=\'value\' value=\'15.13.1.0-1\' type=\'text\' style=\'width:180px\'>"'],
+                script: [classpath: [], sandbox: true, script: '''
+                    def defaults = [PTF: "15.13.1.0-1", PLN: "9.0.1.1-14"]
+                    def val = defaults.getOrDefault(TIPO_AMBIENTE, "15.13.1.0-1")
+                    return "<input name=\'value\' value=\'${val}\' type=\'text\' style=\'width:180px\'>"
+                ''']
+            ]
+        ]
         string(
             name: 'VERSAO_APP',
             defaultValue: '',
