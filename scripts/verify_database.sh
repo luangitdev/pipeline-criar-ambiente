@@ -55,6 +55,7 @@ done
 log "🔍 Verificando banco de dados: $NOME_BANCO"
 
 # Configurar conexão (assumindo que o bastion host já tem acesso direto ao DB)
+TUNNEL_PID=""
 EFFECTIVE_HOST="$DB_HOST"
 EFFECTIVE_PORT="$DB_PORT"
 
