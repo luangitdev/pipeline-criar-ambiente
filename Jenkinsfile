@@ -1,177 +1,6 @@
 pipeline {
     agent any
     
-    parameters {
-        choice(
-            name: 'TIPO_AMBIENTE',
-            choices: ['PTF', 'PLN'],
-            description: 'Tipo do ambiente (PTF ou PLN)'
-        )
-        [$class: 'CascadeChoiceParameter',
-            choiceType: 'PT_SINGLE_SELECT',
-            description: 'Servidor de banco de dados (filtrado por tipo de ambiente)',
-            filterable: false,
-            name: 'SERVIDOR',
-            referencedParameters: 'TIPO_AMBIENTE',
-            script: [
-                $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return ["GCP01"]'],
-                script: [classpath: [], sandbox: true, script: '''
-                    if (TIPO_AMBIENTE == "PLN") {
-                        return ["GCP-PLN"]
-                    } else {
-                        return ["GCP01", "GCP02", "GCP03"]
-                    }
-                ''']
-            ]
-        ]
-        [$class: 'CascadeChoiceParameter',
-            choiceType: 'PT_SINGLE_SELECT',
-            description: 'Servidor de deploy no formato NOME:IP (filtrado por tipo de ambiente)',
-            filterable: false,
-            name: 'DEPLOY_TARGET',
-            referencedParameters: 'TIPO_AMBIENTE',
-            script: [
-                $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return ["N/A"]'],
-                script: [classpath: [], sandbox: true, script: '''
-                    if (TIPO_AMBIENTE == "PLN") {
-                        return [
-                            "PROD-02:34.151.209.238",
-                            "PROD-03:35.199.116.136",
-                            "PROD-04:35.198.30.206",
-                            "PROD-05:34.95.136.178",
-                            "PROD-06:34.95.143.104",
-                            "PROD-07:34.95.181.155"
-                        ]
-                    } else {
-                        return [
-                            "IMP-01:34.95.251.169",
-                            "PROD-01:35.247.243.102",
-                            "PROD-02:35.199.97.30",
-                            "PROD-03:34.95.176.6",
-                            "PROD-04:34.151.235.67",
-                            "PROD-05:35.247.231.213",
-                            "PROD-06:34.151.245.19",
-                            "PROD-07:35.199.65.37",
-                            "PROD-08:35.199.103.167",
-                            "PROD-09:35.199.120.245",
-                            "PROD-10:34.95.167.115",
-                            "PROD-11:34.39.155.140"
-                        ]
-                    }
-                ''']
-            ]
-        ]
-        string(
-            name: 'NOME_BANCO',
-            defaultValue: '',
-            description: 'Nome do banco de dados a ser criado',
-            trim: true
-        )
-        [$class: 'DynamicReferenceParameter',
-            choiceType: 'ET_FORMATTED_HTML',
-            description: 'Versão alvo do banco (ex: PTF → 15.13.1.0-1 | PLN → 9.0.1.1-14)',
-            name: 'VERSAO_BANCO',
-            omitValueField: false,
-            referencedParameters: 'TIPO_AMBIENTE',
-            script: [
-                $class: 'GroovyScript',
-                fallbackScript: [classpath: [], sandbox: true, script: 'return "<input name=\'value\' value=\'15.13.1.0-1\' type=\'text\' style=\'width:180px\'>"'],
-                script: [classpath: [], sandbox: true, script: '''
-                    def defaults = [PTF: "15.13.1.0-1", PLN: "9.0.1.1-14"]
-                    def val = defaults.getOrDefault(TIPO_AMBIENTE, "15.13.1.0-1")
-                    return "<input name=\'value\' value=\'${val}\' type=\'text\' style=\'width:180px\'>"
-                ''']
-            ]
-        ]
-        string(
-            name: 'VERSAO_APP',
-            defaultValue: '',
-            description: 'Versão/ref da aplicação (tag/branch/commit). Se vazio, usa VERSAO_BANCO',
-            trim: true
-        )
-        string(
-            name: 'TOMCAT_VOLUME',
-            defaultValue: '',
-            description: 'Nome do volume Docker do Tomcat (ex: ptf-routing_tomcat-v15_8081)',
-            trim: true
-        )
-        string(
-            name: 'APP_NAME',
-            defaultValue: 'pathfind_',
-            description: 'Nome final da aplicação no Tomcat',
-            trim: true
-        )
-        string(
-            name: 'APP_REPO_URL_OVERRIDE',
-            defaultValue: '',
-            description: 'Override técnico opcional da URL do repositório da aplicação',
-            trim: true
-        )
-        string(
-            name: 'APP_REPO_BRANCH_OVERRIDE',
-            defaultValue: '',
-            description: 'Override técnico opcional da branch da aplicação',
-            trim: true
-        )
-        booleanParam(
-            name: 'CRIAR_BANCO',
-            defaultValue: true,
-            description: 'Executar criação do banco de dados'
-        )
-        booleanParam(
-            name: 'DEPLOY_APP',
-            defaultValue: false,
-            description: 'Executar deploy da aplicação'
-        )
-        booleanParam(
-            name: 'SINCRONIZAR_UPDATES_INFRA',
-            defaultValue: true,
-            description: 'Buscar updates SQL no repositório de infraestrutura (Azure DevOps)'
-        )
-        string(
-            name: 'INFRA_REPO_URL',
-            defaultValue: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Roteirizador/_git/infraestrutura',
-            description: 'URL do repositório de infraestrutura que contém as migrations',
-            trim: true
-        )
-        string(
-            name: 'INFRA_REPO_BRANCH',
-            defaultValue: 'master',
-            description: 'Branch do repositório de infraestrutura',
-            trim: true
-        )
-        string(
-            name: 'INFRA_REPO_CREDENTIALS_ID',
-            defaultValue: 'azure-credentials-luan',
-            description: 'Credentials ID (username/password ou PAT) para acessar o repositório de infraestrutura',
-            trim: true
-        )
-        text(
-            name: 'DADOS_AMBIENTE',
-            defaultValue: '''Endereço: Rua Capitão Luis Ramos, 200
-Bairro: Vila Guilherme
-Cidade: São Paulo
-Estado: SP
-CEP: 02066-010
-Lat: -23.507212290544405
-Long: -46.607500704611475
-CNPJ: 09645368000181
-Razao Social: AGEBRANDS''',
-            description: '''Dados do ambiente no formato:
-Endereço: <endereço>
-Bairro: <bairro>
-Cidade: <cidade>
-Estado: <sigla do estado>
-CEP: <cep>
-Lat: <latitude>
-Long: <longitude>
-CNPJ: <cnpj>
-Razao Social: <razão social>'''
-        )
-    }
-    
     environment {
         PIPELINE_HOME = "${WORKSPACE}"
         SCRIPTS_PATH = "${WORKSPACE}/scripts"
@@ -191,6 +20,162 @@ Razao Social: <razão social>'''
         stage('🔍 Validação de Parâmetros') {
             steps {
                 script {
+                    // Registra todos os parâmetros (incluindo Active Choices) via properties()
+                    // Necessário pois o bloco parameters{} declarativo não aceita sintaxe de mapa
+                    properties([parameters([
+                        [$class: 'ChoiceParameterDefinition',
+                            name: 'TIPO_AMBIENTE',
+                            choices: 'PTF\nPLN',
+                            description: 'Tipo do ambiente (PTF ou PLN)'
+                        ],
+                        [$class: 'CascadeChoiceParameter',
+                            choiceType: 'PT_SINGLE_SELECT',
+                            description: 'Servidor de banco de dados (filtrado por tipo de ambiente)',
+                            filterable: false,
+                            name: 'SERVIDOR',
+                            referencedParameters: 'TIPO_AMBIENTE',
+                            script: [
+                                $class: 'GroovyScript',
+                                fallbackScript: [classpath: [], sandbox: true, script: 'return ["GCP01"]'],
+                                script: [classpath: [], sandbox: true, script: '''
+                                    if (TIPO_AMBIENTE == "PLN") {
+                                        return ["GCP-PLN"]
+                                    } else {
+                                        return ["GCP01", "GCP02", "GCP03"]
+                                    }
+                                ''']
+                            ]
+                        ],
+                        [$class: 'CascadeChoiceParameter',
+                            choiceType: 'PT_SINGLE_SELECT',
+                            description: 'Servidor de deploy no formato NOME:IP (filtrado por tipo de ambiente)',
+                            filterable: false,
+                            name: 'DEPLOY_TARGET',
+                            referencedParameters: 'TIPO_AMBIENTE',
+                            script: [
+                                $class: 'GroovyScript',
+                                fallbackScript: [classpath: [], sandbox: true, script: 'return ["N/A"]'],
+                                script: [classpath: [], sandbox: true, script: '''
+                                    if (TIPO_AMBIENTE == "PLN") {
+                                        return [
+                                            "PROD-02:34.151.209.238",
+                                            "PROD-03:35.199.116.136",
+                                            "PROD-04:35.198.30.206",
+                                            "PROD-05:34.95.136.178",
+                                            "PROD-06:34.95.143.104",
+                                            "PROD-07:34.95.181.155"
+                                        ]
+                                    } else {
+                                        return [
+                                            "IMP-01:34.95.251.169",
+                                            "PROD-01:35.247.243.102",
+                                            "PROD-02:35.199.97.30",
+                                            "PROD-03:34.95.176.6",
+                                            "PROD-04:34.151.235.67",
+                                            "PROD-05:35.247.231.213",
+                                            "PROD-06:34.151.245.19",
+                                            "PROD-07:35.199.65.37",
+                                            "PROD-08:35.199.103.167",
+                                            "PROD-09:35.199.120.245",
+                                            "PROD-10:34.95.167.115",
+                                            "PROD-11:34.39.155.140"
+                                        ]
+                                    }
+                                ''']
+                            ]
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'NOME_BANCO',
+                            defaultValue: '',
+                            description: 'Nome do banco de dados a ser criado',
+                            trim: true
+                        ],
+                        [$class: 'DynamicReferenceParameter',
+                            choiceType: 'ET_FORMATTED_HTML',
+                            description: 'Versão alvo do banco (ex: PTF → 15.13.1.0-1 | PLN → 9.0.1.1-14)',
+                            name: 'VERSAO_BANCO',
+                            omitValueField: false,
+                            referencedParameters: 'TIPO_AMBIENTE',
+                            script: [
+                                $class: 'GroovyScript',
+                                fallbackScript: [classpath: [], sandbox: true, script: 'return "<input name=\'value\' value=\'15.13.1.0-1\' type=\'text\' style=\'width:180px\'> "'],
+                                script: [classpath: [], sandbox: true, script: '''
+                                    def defaults = [PTF: "15.13.1.0-1", PLN: "9.0.1.1-14"]
+                                    def val = defaults.getOrDefault(TIPO_AMBIENTE, "15.13.1.0-1")
+                                    return "<input name=\'value\' value=\'${val}\' type=\'text\' style=\'width:180px\'>"
+                                ''']
+                            ]
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'VERSAO_APP',
+                            defaultValue: '',
+                            description: 'Versão/ref da aplicação (tag/branch/commit). Se vazio, usa VERSAO_BANCO',
+                            trim: true
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'TOMCAT_VOLUME',
+                            defaultValue: '',
+                            description: 'Nome do volume Docker do Tomcat (ex: ptf-routing_tomcat-v15_8081)',
+                            trim: true
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'APP_NAME',
+                            defaultValue: 'pathfind_',
+                            description: 'Nome final da aplicação no Tomcat',
+                            trim: true
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'APP_REPO_URL_OVERRIDE',
+                            defaultValue: '',
+                            description: 'Override técnico opcional da URL do repositório da aplicação',
+                            trim: true
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'APP_REPO_BRANCH_OVERRIDE',
+                            defaultValue: '',
+                            description: 'Override técnico opcional da branch da aplicação',
+                            trim: true
+                        ],
+                        [$class: 'BooleanParameterDefinition',
+                            name: 'CRIAR_BANCO',
+                            defaultValue: true,
+                            description: 'Executar criação do banco de dados'
+                        ],
+                        [$class: 'BooleanParameterDefinition',
+                            name: 'DEPLOY_APP',
+                            defaultValue: false,
+                            description: 'Executar deploy da aplicação'
+                        ],
+                        [$class: 'BooleanParameterDefinition',
+                            name: 'SINCRONIZAR_UPDATES_INFRA',
+                            defaultValue: true,
+                            description: 'Buscar updates SQL no repositório de infraestrutura (Azure DevOps)'
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'INFRA_REPO_URL',
+                            defaultValue: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Roteirizador/_git/infraestrutura',
+                            description: 'URL do repositório de infraestrutura que contém as migrations',
+                            trim: true
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'INFRA_REPO_BRANCH',
+                            defaultValue: 'master',
+                            description: 'Branch do repositório de infraestrutura',
+                            trim: true
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'INFRA_REPO_CREDENTIALS_ID',
+                            defaultValue: 'azure-credentials-luan',
+                            description: 'Credentials ID (username/password ou PAT) para acessar o repositório de infraestrutura',
+                            trim: true
+                        ],
+                        [$class: 'TextParameterDefinition',
+                            name: 'DADOS_AMBIENTE',
+                            defaultValue: 'Endereço: Rua Capitão Luis Ramos, 200\nBairro: Vila Guilherme\nCidade: São Paulo\nEstado: SP\nCEP: 02066-010\nLat: -23.507212290544405\nLong: -46.607500704611475\nCNPJ: 09645368000181\nRazao Social: AGEBRANDS',
+                            description: 'Dados do ambiente no formato Chave: Valor (Endereço, Bairro, Cidade, Estado, CEP, Lat, Long, CNPJ, Razao Social)'
+                        ]
+                    ])])
+
                     echo "🚀 ===== PIPELINE CRIAR AMBIENTE ====="
                     echo "📋 Parâmetros recebidos:"
                     echo "   - Tipo Ambiente: ${params.TIPO_AMBIENTE}"
