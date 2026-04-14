@@ -52,27 +52,26 @@ execute_sql() {
     PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -t -c "$sql" | xargs
 }
 
-# Primeiro testar conexão com o servidor
+# Testar conexão e existência do banco diretamente
 log "🔍 Testando conexão com o servidor PostgreSQL..."
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d postgres -c "SELECT 1;" &>/dev/null; then
-    log_error "Falha ao conectar com o servidor PostgreSQL em $EFFECTIVE_HOST:$EFFECTIVE_PORT (original: $DB_HOST:$DB_PORT)"
-    log_error "Verifique se o servidor está rodando e acessível"
-    
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -c "SELECT 1;" &>/dev/null; then
+    log_error "Falha ao conectar em $EFFECTIVE_HOST:$EFFECTIVE_PORT — banco '$NOME_BANCO' inacessível ou não existe (verifique rede e credenciais)"
+
     # Limpar tunnel se criado
     if [[ -n "$TUNNEL_PID" ]]; then
         kill $TUNNEL_PID 2>/dev/null || true
     fi
     exit 1
 fi
-log_success "Conexão com o servidor estabelecida"
+log_success "Conexão com o banco '$NOME_BANCO' estabelecida"
 
 # Verificar se banco existe
 log "📄 Verificando existência do banco..."
-if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d postgres -t -c "SELECT 1 FROM pg_database WHERE datname='$NOME_BANCO';" | grep -q 1; then
-    log_error "Banco $NOME_BANCO não encontrado!"
+if ! PGPASSWORD="$DB_PASSWORD" psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -t -c "SELECT 1 FROM pg_database WHERE datname='$NOME_BANCO';" | grep -q 1; then
+    log_error "Banco '$NOME_BANCO' não encontrado!"
     exit 1
 fi
-log_success "Banco $NOME_BANCO existe"
+log_success "Banco '$NOME_BANCO' existe"
 
 # Verificar conectividade específica do banco
 log "🔗 Testando conectividade com o banco..."
