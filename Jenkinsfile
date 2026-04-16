@@ -125,15 +125,15 @@ pipeline {
                             trim: true
                         ],
                         [$class: 'StringParameterDefinition',
-                            name: 'APP_REPO_URL_OVERRIDE',
+                            name: 'APP_REPO_BRANCH',
                             defaultValue: '',
-                            description: 'Override técnico opcional da URL do repositório da aplicação',
+                            description: 'Branch do repositório da aplicação (ex: PTF → mvp | PLN → v8). Se vazio, usa o padrão do tipo de ambiente.',
                             trim: true
                         ],
                         [$class: 'StringParameterDefinition',
-                            name: 'APP_REPO_BRANCH_OVERRIDE',
+                            name: 'APP_REPO_URL_OVERRIDE',
                             defaultValue: '',
-                            description: 'Override técnico opcional da branch da aplicação',
+                            description: 'Override técnico opcional da URL do repositório da aplicação',
                             trim: true
                         ],
                         [$class: 'BooleanParameterDefinition',
@@ -343,7 +343,7 @@ pipeline {
                     ]
                     def selectedRepo = appRepoDefaults[params.TIPO_AMBIENTE]
                     env.APP_REPO_URL = (params.APP_REPO_URL_OVERRIDE?.trim()) ? params.APP_REPO_URL_OVERRIDE.trim() : selectedRepo.url
-                    env.APP_REPO_BRANCH = (params.APP_REPO_BRANCH_OVERRIDE?.trim()) ? params.APP_REPO_BRANCH_OVERRIDE.trim() : selectedRepo.branch
+                    env.APP_REPO_BRANCH = params.APP_REPO_BRANCH?.trim() ?: selectedRepo.branch
                     
                     echo "✅ Validação concluída. DB Host: ${env.DB_HOST}"
                     if (params.DEPLOY_APP) {
