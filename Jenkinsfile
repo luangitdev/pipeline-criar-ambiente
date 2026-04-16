@@ -32,12 +32,6 @@ pipeline {
                         ],
 
                         // ==================== BANCO DE DADOS ====================
-                        [$class: 'hudson.plugins.separator.SeparatorDefinition',
-                            name: 'sep_banco',
-                            sectionHeader: '🗄️ Banco de Dados',
-                            separatorStyle: 'border: 0',
-                            sectionHeaderStyle: 'background: #1a73e8; color: white; font-weight: bold; padding: 6px 10px; border-radius: 4px; font-size: 13px;'
-                        ],
                         [$class: 'BooleanParameterDefinition',
                             name: 'CRIAR_BANCO',
                             defaultValue: true,
@@ -113,12 +107,6 @@ pipeline {
                         ],
 
                         // ==================== APLICAÇÃO ====================
-                        [$class: 'hudson.plugins.separator.SeparatorDefinition',
-                            name: 'sep_app',
-                            sectionHeader: '🚀 Aplicação',
-                            separatorStyle: 'border: 0',
-                            sectionHeaderStyle: 'background: #1a73e8; color: white; font-weight: bold; padding: 6px 10px; border-radius: 4px; font-size: 13px;'
-                        ],
                         [$class: 'BooleanParameterDefinition',
                             name: 'DEPLOY_APP',
                             defaultValue: false,
@@ -194,12 +182,6 @@ pipeline {
                         ],
 
                         // ==================== REDIRECIONAMENTO ====================
-                        [$class: 'hudson.plugins.separator.SeparatorDefinition',
-                            name: 'sep_redirect',
-                            sectionHeader: '🔀 Redirecionamento',
-                            separatorStyle: 'border: 0',
-                            sectionHeaderStyle: 'background: #1a73e8; color: white; font-weight: bold; padding: 6px 10px; border-radius: 4px; font-size: 13px;'
-                        ],
                         [$class: 'BooleanParameterDefinition',
                             name: 'ENABLE_REDIRECT_CONFIG',
                             defaultValue: false,
