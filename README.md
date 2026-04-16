@@ -16,6 +16,7 @@ pipelineCriarAmbiente/
 │   ├── generate_start_sql.sh  # Gera SQL personalizado
 │   ├── fetch_updates.sh       # Sincroniza migrations do repositório de infraestrutura
 │   ├── deploy_application.sh  # Deploy de aplicação WAR
+│   ├── configure_redirect.sh  # Configuração de redirecionamento Apache2
 │   ├── verify_database.sh     # Verificação do banco
 │   └── verify_deployment.sh   # Verificação do deploy
 ├── templates/
@@ -70,6 +71,9 @@ pipelineCriarAmbiente/
 | `INFRA_REPO_URL` | String | URL do repositório de infraestrutura | `https://dev.azure.com/.../_git/infraestrutura` |
 | `INFRA_REPO_BRANCH` | String | Branch do repositório de infraestrutura | `Master` |
 | `INFRA_REPO_CREDENTIALS_ID` | String | Credentials ID Jenkins para acesso ao repo infra | `azure-devops-infra-readonly` |
+| `ENABLE_REDIRECT_CONFIG` | Boolean | Habilitar configuração de redirecionamento Apache2 | `false` |
+| `REDIRECT_SERVER_IP` | String | IP do servidor Apache2 para configuração de redirecionamento | `192.168.1.100` |
+| `REDIRECT_MAPPINGS` | Text | Lista de mapeamentos no formato `nome_servidor:tomcat:alias_redirecionamento` | `gcp01:tc01:gcp_v14_prod_07_04` |
 
 ### 3. Exemplo de Execução
 
@@ -110,6 +114,13 @@ DEPLOY_APP: true
 - Gera configuration personalizada
 - Cria scripts de start/stop
 - Configura logging
+
+### ✅ Configuração de Redirecionamento
+- Modifica `/etc/apache2/uriworkermap.properties` via SSH
+- Gera linhas no formato `/{app_name}*=alias_redirecionamento`
+- Faz backup automático do arquivo original
+- Recarrega serviço Apache2 após modificações
+- Suporte para múltiplos mapeamentos
 
 ### ✅ Verificações
 - Valida criação do banco
@@ -165,10 +176,13 @@ graph TD
     D -->|Não| F{Deploy App?}
     E --> F
     F -->|Sim| G[Deploy Aplicação]
-    F -->|Não| H[Verificação Final]
+    F -->|Não| H{Configurar Redirect?}
     G --> H
-    H --> I[Limpeza]
-    I --> J[Fim]
+    H -->|Sim| I[Configuração Redirecionamento]
+    H -->|Não| J[Verificação Final]
+    I --> J
+    J --> K[Limpeza]
+    K --> L[Fim]
 ```
 
 ## 🛠️ Troubleshooting

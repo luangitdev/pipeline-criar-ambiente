@@ -169,11 +169,27 @@ pipeline {
                             description: 'Credentials ID (username/password ou PAT) para acessar o repositório de infraestrutura',
                             trim: true
                         ],
-                        [$class: 'TextParameterDefinition',
-                            name: 'DADOS_AMBIENTE',
-                            defaultValue: 'Endereço: Rua Capitão Luis Ramos, 200\nBairro: Vila Guilherme\nCidade: São Paulo\nEstado: SP\nCEP: 02066-010\nLat: -23.507212290544405\nLong: -46.607500704611475\nCNPJ: 09645368000181\nRazao Social: AGEBRANDS',
-                            description: 'Dados do ambiente no formato Chave: Valor (Endereço, Bairro, Cidade, Estado, CEP, Lat, Long, CNPJ, Razao Social)'
-                        ]
+                         [$class: 'TextParameterDefinition',
+                             name: 'DADOS_AMBIENTE',
+                             defaultValue: 'Endereço: Rua Capitão Luis Ramos, 200\nBairro: Vila Guilherme\nCidade: São Paulo\nEstado: SP\nCEP: 02066-010\nLat: -23.507212290544405\nLong: -46.607500704611475\nCNPJ: 09645368000181\nRazao Social: AGEBRANDS',
+                             description: 'Dados do ambiente no formato Chave: Valor (Endereço, Bairro, Cidade, Estado, CEP, Lat, Long, CNPJ, Razao Social)'
+                         ],
+                         [$class: 'StringParameterDefinition',
+                             name: 'REDIRECT_SERVER_IP',
+                             defaultValue: '',
+                             description: 'IP do servidor Apache2 onde está o uriworkermap.properties para configuração de redirecionamento',
+                             trim: true
+                         ],
+                         [$class: 'TextParameterDefinition',
+                             name: 'REDIRECT_MAPPINGS',
+                             defaultValue: '',
+                             description: 'Lista de mapeamentos no formato nome_servidor:tomcat:alias_redirecionamento (separados por vírgula ou nova linha)'
+                         ],
+                         [$class: 'BooleanParameterDefinition',
+                             name: 'ENABLE_REDIRECT_CONFIG',
+                             defaultValue: false,
+                             description: 'Habilitar configuração de redirecionamento Apache2'
+                         ]
                     ])])
 
                     echo "🚀 ===== PIPELINE CRIAR AMBIENTE ====="
@@ -188,8 +204,13 @@ pipeline {
                     echo "   - Deploy App: ${params.DEPLOY_APP}"
                     echo "   - Tomcat Volume: ${params.TOMCAT_VOLUME}"
                     echo "   - App Name: ${params.APP_NAME}"
-                    echo "   - Sincronizar Updates Infra: ${params.SINCRONIZAR_UPDATES_INFRA}"
-                    echo "======================================="
+                     echo "   - Sincronizar Updates Infra: ${params.SINCRONIZAR_UPDATES_INFRA}"
+                     echo "   - Enable Redirect Config: ${params.ENABLE_REDIRECT_CONFIG}"
+                     if (params.ENABLE_REDIRECT_CONFIG) {
+                         echo "   - Redirect Server IP: ${params.REDIRECT_SERVER_IP}"
+                         echo "   - Redirect Mappings: ${params.REDIRECT_MAPPINGS}"
+                     }
+                     echo "======================================="
                     
                     // Validações básicas
                     if (!params.NOME_BANCO || params.NOME_BANCO.trim() == '') {
@@ -242,6 +263,31 @@ pipeline {
 
                     if (params.CRIAR_BANCO && params.SINCRONIZAR_UPDATES_INFRA && (!params.INFRA_REPO_CREDENTIALS_ID || params.INFRA_REPO_CREDENTIALS_ID.trim() == '')) {
                         error("❌ INFRA_REPO_CREDENTIALS_ID é obrigatório quando a sincronização de updates está habilitada!")
+                    }
+
+                    if (params.ENABLE_REDIRECT_CONFIG) {
+                        if (!params.REDIRECT_SERVER_IP || params.REDIRECT_SERVER_IP.trim() == '') {
+                            error("❌ REDIRECT_SERVER_IP é obrigatório quando ENABLE_REDIRECT_CONFIG=true!")
+                        }
+
+                        def ip = params.REDIRECT_SERVER_IP.trim()
+                        if (!(ip ==~ /^\d{1,3}(\.\d{1,3}){3}$/)) {
+                            error("❌ REDIRECT_SERVER_IP inválido. IP fora do padrão esperado.")
+                        }
+
+                        if (!params.REDIRECT_MAPPINGS || params.REDIRECT_MAPPINGS.trim() == '') {
+                            error("❌ REDIRECT_MAPPINGS é obrigatório quando ENABLE_REDIRECT_CONFIG=true!")
+                        }
+
+                        def mappings = params.REDIRECT_MAPPINGS.split(/[,\\n]+/).findAll { it.trim() }
+                        for (def mapping : mappings) {
+                            def parts = mapping.trim().split(':')
+                            if (parts.size() != 3 || !parts[0].trim() || !parts[1].trim() || !parts[2].trim()) {
+                                error("❌ Mapeamento inválido: '${mapping}'. Use o formato nome_servidor:tomcat:alias_redirecionamento.")
+                            }
+                        }
+
+                        echo "✅ Validação de redirecionamento: ${mappings.size()} mapeamentos válidos"
                     }
 
                     if (params.DEPLOY_APP && params.CRIAR_BANCO) {
@@ -617,7 +663,100 @@ ENDDEPLOY
                 }
             }
         }
-        
+
+        stage('🔀 Configuração de Redirecionamento') {
+            when {
+                expression { params.ENABLE_REDIRECT_CONFIG }
+            }
+            steps {
+                script {
+                    echo "🔀 Configurando redirecionamento Apache2..."
+
+                    withCredentials([
+                        string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
+                        string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
+                        string(credentialsId: 'infra-sudo-pswd', variable: 'INFRA_SUDO_PASSWORD'),
+                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE'),
+                        sshUserPrivateKey(credentialsId: 'ssh-credentials', keyFileVariable: 'REDIRECT_SSH_KEY', passphraseVariable: 'REDIRECT_SSH_PASSPHRASE')
+                    ]) {
+                        def redirectResult = sh(
+                            script: """
+                                # Criar script temporário para ssh-add
+                                cat > /tmp/ssh-add-script-\$\$.sh << 'EOF'
+#!/bin/bash
+echo "\$SSH_PASSPHRASE"
+EOF
+                                chmod +x /tmp/ssh-add-script-\$\$.sh
+
+                                # Configurar ssh-agent temporário
+                                eval \$(ssh-agent -s)
+
+                                # Adicionar chave com passphrase
+                                DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
+
+                                # Criar diretório no bastion e copiar arquivos necessários
+                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
+                                scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
+                                scp -o StrictHostKeyChecking=no "\${REDIRECT_SSH_KEY}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.redirect_ssh_key
+                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "chmod 600 /tmp/pipeline-${BUILD_NUMBER}/.redirect_ssh_key"
+                                printf '%s' "\${INFRA_SUDO_PASSWORD}" > "${WORKSPACE}/temp/.infra_sudo_password"
+                                scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.infra_sudo_password" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password
+                                rm -f "${WORKSPACE}/temp/.infra_sudo_password"
+
+                                # Executar configuração no bastion
+                                ssh -A -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDREDIRECT'
+cd /tmp/pipeline-${BUILD_NUMBER}
+chmod +x scripts/*.sh
+trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password /tmp/pipeline-${BUILD_NUMBER}/.redirect_ssh_key' EXIT
+SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)"
+
+echo "🔀 Executando configuração de redirecionamento..."
+
+# Executar configuração de redirecionamento
+./scripts/configure_redirect.sh \\
+    --redirect-server-ip "${params.REDIRECT_SERVER_IP}" \\
+    --redirect-mappings "${params.REDIRECT_MAPPINGS}" \\
+    --app-name "${params.APP_NAME}" \\
+    --workspace "/tmp/pipeline-${BUILD_NUMBER}" \\
+    --ssh-key-file "/tmp/pipeline-${BUILD_NUMBER}/.redirect_ssh_key" \\
+    --ssh-user "infra" \\
+    --sudo-password "\${SUDO_PASSWORD_REMOTE}"
+
+# Verificar se houve erro na configuração
+if [ \$? -ne 0 ]; then
+    echo "❌ ERRO: Falha na configuração de redirecionamento!"
+    exit 1
+fi
+
+echo "✅ Configuração de redirecionamento concluída com sucesso!"
+ENDREDIRECT
+
+                                # Capturar exit code do SSH
+                                REDIRECT_EXIT_CODE=\$?
+
+                                # Limpar
+                                ssh-agent -k
+                                rm -f /tmp/ssh-add-script-\$\$.sh
+
+                                # Verificar se houve erro
+                                if [ \$REDIRECT_EXIT_CODE -ne 0 ]; then
+                                    echo "❌ ERRO: Configuração de redirecionamento falhou com código: \$REDIRECT_EXIT_CODE"
+                                    exit \$REDIRECT_EXIT_CODE
+                                fi
+                            """,
+                            returnStatus: true
+                        )
+
+                        if (redirectResult != 0) {
+                            error("❌ Falha na configuração de redirecionamento! Exit code: ${redirectResult}")
+                        }
+
+                        echo "✅ Configuração de redirecionamento concluída com sucesso!"
+                    }
+                }
+            }
+        }
+
         stage('✅ Verificação Final') {
             steps {
                 script {
