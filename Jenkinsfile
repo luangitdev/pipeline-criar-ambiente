@@ -213,7 +213,7 @@ pipeline {
                         ],
                         [$class: 'TextParameterDefinition',
                             name: 'REDIRECT_MAPPINGS',
-                            defaultValue: '',
+                            defaultValue: 'imp01:ptf-routing_tomcat-v15_8081:v15_imp_01_01',
                             description: 'Lista de mapeamentos no formato nome_servidor:tomcat:alias_redirecionamento (separados por vírgula ou nova linha)'
                         ]
 
