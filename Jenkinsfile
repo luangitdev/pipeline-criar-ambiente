@@ -23,10 +23,19 @@ pipeline {
                     // Registra todos os parâmetros (incluindo Active Choices) via properties()
                     // Necessário pois o bloco parameters{} declarativo não aceita sintaxe de mapa
                     properties([parameters([
+
+                        // ==================== GERAL ====================
                         [$class: 'ChoiceParameterDefinition',
                             name: 'TIPO_AMBIENTE',
                             choices: 'PTF\nPLN',
                             description: 'Tipo do ambiente (PTF ou PLN)'
+                        ],
+
+                        // ==================== BANCO DE DADOS ====================
+                        [$class: 'BooleanParameterDefinition',
+                            name: 'CRIAR_BANCO',
+                            defaultValue: true,
+                            description: 'Executar criação do banco de dados'
                         ],
                         [$class: 'CascadeChoiceParameter',
                             choiceType: 'PT_SINGLE_SELECT',
@@ -45,6 +54,63 @@ pipeline {
                                     }
                                 ''']
                             ]
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'NOME_BANCO',
+                            defaultValue: '',
+                            description: 'Nome do banco de dados a ser criado',
+                            trim: true
+                        ],
+                        [$class: 'DynamicReferenceParameter',
+                            choiceType: 'ET_FORMATTED_HTML',
+                            description: 'Versão alvo do banco (ex: PTF → 15.13.1.0-1 | PLN → 9.0.1.1-14)',
+                            name: 'VERSAO_BANCO',
+                            omitValueField: false,
+                            referencedParameters: 'TIPO_AMBIENTE',
+                            script: [
+                                $class: 'GroovyScript',
+                                fallbackScript: [classpath: [], sandbox: true, script: 'return "<input name=\'value\' value=\'15.13.1.0-1\' type=\'text\' style=\'width:180px\'> "'],
+                                script: [classpath: [], sandbox: true, script: '''
+                                    def defaults = [PTF: "15.13.1.0-1", PLN: "9.0.1.1-14"]
+                                    def val = defaults.getOrDefault(TIPO_AMBIENTE, "15.13.1.0-1")
+                                    return "<input name=\'value\' value=\'${val}\' type=\'text\' style=\'width:180px\'>"
+                                ''']
+                            ]
+                        ],
+                        [$class: 'TextParameterDefinition',
+                            name: 'DADOS_AMBIENTE',
+                            defaultValue: 'Endereço: Rua Capitão Luis Ramos, 200\nBairro: Vila Guilherme\nCidade: São Paulo\nEstado: SP\nCEP: 02066-010\nLat: -23.507212290544405\nLong: -46.607500704611475\nCNPJ: 09645368000181\nRazao Social: AGEBRANDS',
+                            description: 'Dados do ambiente no formato Chave: Valor (Endereço, Bairro, Cidade, Estado, CEP, Lat, Long, CNPJ, Razao Social)'
+                        ],
+                        [$class: 'BooleanParameterDefinition',
+                            name: 'SINCRONIZAR_UPDATES_INFRA',
+                            defaultValue: true,
+                            description: 'Buscar updates SQL no repositório de infraestrutura (Azure DevOps)'
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'INFRA_REPO_URL',
+                            defaultValue: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Roteirizador/_git/infraestrutura',
+                            description: 'URL do repositório de infraestrutura que contém as migrations',
+                            trim: true
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'INFRA_REPO_BRANCH',
+                            defaultValue: 'master',
+                            description: 'Branch do repositório de infraestrutura',
+                            trim: true
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'INFRA_REPO_CREDENTIALS_ID',
+                            defaultValue: 'azure-credentials-luan',
+                            description: 'Credentials ID (username/password ou PAT) para acessar o repositório de infraestrutura',
+                            trim: true
+                        ],
+
+                        // ==================== APLICAÇÃO ====================
+                        [$class: 'BooleanParameterDefinition',
+                            name: 'DEPLOY_APP',
+                            defaultValue: false,
+                            description: 'Executar deploy da aplicação'
                         ],
                         [$class: 'CascadeChoiceParameter',
                             choiceType: 'PT_SINGLE_SELECT',
@@ -85,31 +151,15 @@ pipeline {
                             ]
                         ],
                         [$class: 'StringParameterDefinition',
-                            name: 'NOME_BANCO',
-                            defaultValue: '',
-                            description: 'Nome do banco de dados a ser criado',
-                            trim: true
-                        ],
-                        [$class: 'DynamicReferenceParameter',
-                            choiceType: 'ET_FORMATTED_HTML',
-                            description: 'Versão alvo do banco (ex: PTF → 15.13.1.0-1 | PLN → 9.0.1.1-14)',
-                            name: 'VERSAO_BANCO',
-                            omitValueField: false,
-                            referencedParameters: 'TIPO_AMBIENTE',
-                            script: [
-                                $class: 'GroovyScript',
-                                fallbackScript: [classpath: [], sandbox: true, script: 'return "<input name=\'value\' value=\'15.13.1.0-1\' type=\'text\' style=\'width:180px\'> "'],
-                                script: [classpath: [], sandbox: true, script: '''
-                                    def defaults = [PTF: "15.13.1.0-1", PLN: "9.0.1.1-14"]
-                                    def val = defaults.getOrDefault(TIPO_AMBIENTE, "15.13.1.0-1")
-                                    return "<input name=\'value\' value=\'${val}\' type=\'text\' style=\'width:180px\'>"
-                                ''']
-                            ]
-                        ],
-                        [$class: 'StringParameterDefinition',
                             name: 'VERSAO_APP',
                             defaultValue: '',
                             description: 'Versão/ref da aplicação (tag/branch/commit). Se vazio, usa VERSAO_BANCO',
+                            trim: true
+                        ],
+                        [$class: 'StringParameterDefinition',
+                            name: 'APP_REPO_BRANCH',
+                            defaultValue: '',
+                            description: 'Branch do repositório da aplicação (ex: PTF → mvp | PLN → v8). Se vazio, usa o padrão do tipo de ambiente.',
                             trim: true
                         ],
                         [$class: 'StringParameterDefinition',
@@ -125,71 +175,30 @@ pipeline {
                             trim: true
                         ],
                         [$class: 'StringParameterDefinition',
-                            name: 'APP_REPO_BRANCH',
-                            defaultValue: '',
-                            description: 'Branch do repositório da aplicação (ex: PTF → mvp | PLN → v8). Se vazio, usa o padrão do tipo de ambiente.',
-                            trim: true
-                        ],
-                        [$class: 'StringParameterDefinition',
                             name: 'APP_REPO_URL_OVERRIDE',
                             defaultValue: '',
                             description: 'Override técnico opcional da URL do repositório da aplicação',
                             trim: true
                         ],
+
+                        // ==================== REDIRECIONAMENTO ====================
                         [$class: 'BooleanParameterDefinition',
-                            name: 'CRIAR_BANCO',
-                            defaultValue: true,
-                            description: 'Executar criação do banco de dados'
-                        ],
-                        [$class: 'BooleanParameterDefinition',
-                            name: 'DEPLOY_APP',
+                            name: 'ENABLE_REDIRECT_CONFIG',
                             defaultValue: false,
-                            description: 'Executar deploy da aplicação'
-                        ],
-                        [$class: 'BooleanParameterDefinition',
-                            name: 'SINCRONIZAR_UPDATES_INFRA',
-                            defaultValue: true,
-                            description: 'Buscar updates SQL no repositório de infraestrutura (Azure DevOps)'
+                            description: 'Habilitar configuração de redirecionamento Apache2'
                         ],
                         [$class: 'StringParameterDefinition',
-                            name: 'INFRA_REPO_URL',
-                            defaultValue: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Roteirizador/_git/infraestrutura',
-                            description: 'URL do repositório de infraestrutura que contém as migrations',
+                            name: 'REDIRECT_SERVER_IP',
+                            defaultValue: '',
+                            description: 'IP do servidor Apache2 onde está o uriworkermap.properties para configuração de redirecionamento',
                             trim: true
                         ],
-                        [$class: 'StringParameterDefinition',
-                            name: 'INFRA_REPO_BRANCH',
-                            defaultValue: 'master',
-                            description: 'Branch do repositório de infraestrutura',
-                            trim: true
-                        ],
-                        [$class: 'StringParameterDefinition',
-                            name: 'INFRA_REPO_CREDENTIALS_ID',
-                            defaultValue: 'azure-credentials-luan',
-                            description: 'Credentials ID (username/password ou PAT) para acessar o repositório de infraestrutura',
-                            trim: true
-                        ],
-                         [$class: 'TextParameterDefinition',
-                             name: 'DADOS_AMBIENTE',
-                             defaultValue: 'Endereço: Rua Capitão Luis Ramos, 200\nBairro: Vila Guilherme\nCidade: São Paulo\nEstado: SP\nCEP: 02066-010\nLat: -23.507212290544405\nLong: -46.607500704611475\nCNPJ: 09645368000181\nRazao Social: AGEBRANDS',
-                             description: 'Dados do ambiente no formato Chave: Valor (Endereço, Bairro, Cidade, Estado, CEP, Lat, Long, CNPJ, Razao Social)'
-                         ],
-                         [$class: 'StringParameterDefinition',
-                             name: 'REDIRECT_SERVER_IP',
-                             defaultValue: '',
-                             description: 'IP do servidor Apache2 onde está o uriworkermap.properties para configuração de redirecionamento',
-                             trim: true
-                         ],
-                         [$class: 'TextParameterDefinition',
-                             name: 'REDIRECT_MAPPINGS',
-                             defaultValue: '',
-                             description: 'Lista de mapeamentos no formato nome_servidor:tomcat:alias_redirecionamento (separados por vírgula ou nova linha)'
-                         ],
-                         [$class: 'BooleanParameterDefinition',
-                             name: 'ENABLE_REDIRECT_CONFIG',
-                             defaultValue: false,
-                             description: 'Habilitar configuração de redirecionamento Apache2'
-                         ]
+                        [$class: 'TextParameterDefinition',
+                            name: 'REDIRECT_MAPPINGS',
+                            defaultValue: '',
+                            description: 'Lista de mapeamentos no formato nome_servidor:tomcat:alias_redirecionamento (separados por vírgula ou nova linha)'
+                        ]
+
                     ])])
 
                     echo "🚀 ===== PIPELINE CRIAR AMBIENTE ====="
