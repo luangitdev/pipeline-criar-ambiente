@@ -71,103 +71,127 @@ git_with_auth() {
     git -c http.extraHeader="Authorization: Basic ${AUTH_B64}" "$@"
 }
 
-git_with_auth clone --no-checkout --depth 1 --branch "$REPO_BRANCH" "$REPO_URL" "$REPO_DIR"
+# Clone completo (sem --depth 1) para poder buscar em todos os commits da branch
+git_with_auth clone --no-checkout --single-branch --branch "$REPO_BRANCH" "$REPO_URL" "$REPO_DIR"
 
 build_ok=false
 pushd "$REPO_DIR" >/dev/null
 
 resolved_ref=""
-tag_ref=""
-branch_ref=""
-tag_ref_full=""
-branch_ref_full=""
-commit_ref=""
-version_pattern="(v)?${APP_VERSION//./\\.}"
 
-for candidate in "$APP_VERSION" "v$APP_VERSION"; do
-    if git_with_auth ls-remote --exit-code --tags origin "refs/tags/${candidate}" >/dev/null 2>&1; then
-        tag_ref="$candidate"
-        tag_ref_full="refs/tags/${candidate}"
-        break
-    fi
-done
+# ---------------------------------------------------------------------------
+# Função: converte N.N.N.N-N em inteiro comparável para ordenação semântica
+# (aceita prefixos: "v", "v." ou nenhum)
+# ---------------------------------------------------------------------------
+version_to_int() {
+    local ver="$1"
+    # Remove prefixo "v." ou "v"
+    ver="${ver#v.}"
+    ver="${ver#v}"
+    local main="${ver%%-*}"
+    local build="${ver##*-}"
+    [[ "$ver" == *"-"* ]] || build=0
+    IFS='.' read -r a b c d <<< "$main"
+    printf '%d%04d%04d%04d%06d' "${a:-0}" "${b:-0}" "${c:-0}" "${d:-0}" "${build:-0}"
+}
 
-if [[ -z "$tag_ref_full" ]]; then
-    mapfile -t matching_tags < <(
-        git_with_auth ls-remote --tags --refs origin \
-            | awk '{print $2}' \
-            | grep -E "(/${version_pattern}|^refs/tags/${version_pattern})$" || true
-    )
-    if [[ "${#matching_tags[@]}" -eq 1 ]]; then
-        tag_ref_full="${matching_tags[0]}"
-        tag_ref="${tag_ref_full#refs/tags/}"
-    elif [[ "${#matching_tags[@]}" -gt 1 ]]; then
-        log_error "Mais de uma tag corresponde à versão '${APP_VERSION}':"
-        printf '%s\n' "${matching_tags[@]}" | sed 's/^/  - /'
-        log_error "Use APP_REPO_BRANCH_OVERRIDE para fixar a origem da app."
-        popd >/dev/null
-        exit 1
-    fi
-fi
+# Normaliza versão para comparação canônica (remove prefixo v. ou v)
+normalize_version() {
+    local ver="$1"
+    ver="${ver#v.}"
+    ver="${ver#v}"
+    echo "$ver"
+}
 
-if [[ -n "$tag_ref" ]]; then
-    log "🔖 Usando tag da aplicação: $tag_ref"
-    git_with_auth fetch --depth 1 origin "${tag_ref_full}:${tag_ref_full}"
-    git checkout -q "tags/${tag_ref}"
-    resolved_ref="tag:${tag_ref}"
-else
-    for candidate in "$APP_VERSION" "v$APP_VERSION"; do
-        if git_with_auth ls-remote --exit-code --heads origin "refs/heads/${candidate}" >/dev/null 2>&1; then
-            branch_ref="$candidate"
-            branch_ref_full="refs/heads/${candidate}"
-            break
+# ---------------------------------------------------------------------------
+# Busca o commit cujo título contém a versão desejada na branch clonada
+# Suporta formatos: 15.14.0.1-10  /  v15.14.0.1-10  /  v.15.14.0.1-10
+# ---------------------------------------------------------------------------
+log "🔍 Buscando versão '${APP_VERSION}' nos títulos de commits da branch '${REPO_BRANCH}'..."
+
+APP_VERSION_NORM="$(normalize_version "$APP_VERSION")"
+
+# Carrega todos os commits: hash + título completo
+mapfile -t all_commits < <(
+    git log --format="%H %s" origin/"${REPO_BRANCH}" 2>/dev/null \
+        || git log --format="%H %s"
+)
+
+# Extrai versões únicas no formato (v.|v)?N.N.N.N-N presentes nos títulos
+# e normaliza removendo prefixo para comparação uniforme
+mapfile -t all_versions_raw < <(
+    printf '%s\n' "${all_commits[@]}" \
+        | grep -oE '(v\.)?[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9]+' \
+        | sed 's/^v\.//' | sed 's/^v//' \
+        | sort -u || true
+)
+
+found_commit=""
+found_version=""
+
+# Busca a versão nos títulos tentando todos os prefixos comuns
+for entry in "${all_commits[@]}"; do
+    commit_hash="${entry%% *}"
+    commit_msg="${entry#* }"
+    for candidate in "$APP_VERSION_NORM" "v${APP_VERSION_NORM}" "v.${APP_VERSION_NORM}"; do
+        if echo "$commit_msg" | grep -qF "$candidate"; then
+            found_commit="$commit_hash"
+            found_version="$candidate"
+            break 2
         fi
     done
+done
 
-    if [[ -z "$branch_ref_full" ]]; then
-        mapfile -t matching_branches < <(
-            git_with_auth ls-remote --heads origin \
-                | awk '{print $2}' \
-                | grep -E "(/${version_pattern}|^refs/heads/${version_pattern})$" || true
-        )
-        if [[ "${#matching_branches[@]}" -eq 1 ]]; then
-            branch_ref_full="${matching_branches[0]}"
-            branch_ref="${branch_ref_full#refs/heads/}"
-        elif [[ "${#matching_branches[@]}" -gt 1 ]]; then
-            log_error "Mais de uma branch corresponde à versão '${APP_VERSION}':"
-            printf '%s\n' "${matching_branches[@]}" | sed 's/^/  - /'
-            log_error "Use APP_REPO_BRANCH_OVERRIDE para fixar a origem da app."
-            popd >/dev/null
-            exit 1
-        fi
-    fi
+if [[ -n "$found_commit" ]]; then
+    log "✅ Versão '${APP_VERSION}' encontrada no commit: ${found_commit:0:12} — \"$(git log -1 --format='%s' "$found_commit")\""
+    git checkout -q "$found_commit"
+    resolved_ref="commit-by-version:${found_commit:0:12}(${found_version})"
+else
+    log_error "❌ Versão '${APP_VERSION}' não encontrada nos títulos de commits da branch '${REPO_BRANCH}'."
 
-    if [[ -n "$branch_ref" ]]; then
-        log "🌿 Usando branch da aplicação: $branch_ref"
-        git_with_auth fetch --depth 1 origin "${branch_ref_full}:refs/remotes/origin/${branch_ref}"
-        git checkout -q "origin/${branch_ref}"
-        resolved_ref="branch:${branch_ref}"
-    else
-        if git_with_auth ls-remote --exit-code origin "$APP_VERSION" >/dev/null 2>&1; then
-            commit_ref="$APP_VERSION"
-        elif [[ "$APP_VERSION" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
-            if git_with_auth fetch --depth 1 origin "$APP_VERSION" >/dev/null 2>&1; then
-                commit_ref="$APP_VERSION"
+    # -------------------------------------------------------------------
+    # Sugestão: versão mais próxima (anterior e posterior) encontrada
+    # -------------------------------------------------------------------
+    if [[ "${#all_versions_raw[@]}" -gt 0 ]]; then
+        desired_int="$(version_to_int "$APP_VERSION")"
+        best_lower=""
+        best_lower_int=0
+        best_upper=""
+        best_upper_int=""
+
+        for v in "${all_versions_raw[@]}"; do
+            v_int="$(version_to_int "$v")"
+            if [[ "$v_int" -le "$desired_int" ]]; then
+                if [[ "$v_int" -gt "$best_lower_int" ]]; then
+                    best_lower_int="$v_int"
+                    best_lower="$v"
+                fi
+            else
+                if [[ -z "$best_upper_int" || "$v_int" -lt "$best_upper_int" ]]; then
+                    best_upper_int="$v_int"
+                    best_upper="$v"
+                fi
             fi
-        fi
+        done
 
-        if [[ -n "$commit_ref" ]]; then
-            log "🧬 Usando commit da aplicação: $commit_ref"
-            git_with_auth fetch --depth 1 origin "$commit_ref"
-            git checkout -q FETCH_HEAD
-            resolved_ref="commit:${commit_ref}"
-        else
-            log_error "Versão da aplicação '${APP_VERSION}' não encontrada como tag, branch ou commit no repositório."
-            log_error "Tentativas realizadas: '${APP_VERSION}' e 'v${APP_VERSION}'."
-            popd >/dev/null
-            exit 1
+        log_error "💡 Versões disponíveis nos commits da branch '${REPO_BRANCH}':"
+        if [[ -n "$best_lower" ]]; then
+            lower_commit="$(printf '%s\n' "${all_commits[@]}" | grep -E "(v\.?)?${best_lower//./\\.}" | head -1 | awk '{print $1}')"
+            log_error "   ✅ Versão imediatamente ANTERIOR : ${best_lower}  (commit ${lower_commit:0:12})"
         fi
+        if [[ -n "$best_upper" ]]; then
+            upper_commit="$(printf '%s\n' "${all_commits[@]}" | grep -E "(v\.?)?${best_upper//./\\.}" | head -1 | awk '{print $1}')"
+            log_error "   ⬆️  Versão imediatamente POSTERIOR: ${best_upper}  (commit ${upper_commit:0:12})"
+        fi
+        if [[ -z "$best_lower" && -z "$best_upper" ]]; then
+            log_error "   Nenhuma versão no formato N.N.N.N-N encontrada nos commits."
+        fi
+    else
+        log_error "💡 Nenhuma versão no formato N.N.N.N-N encontrada nos títulos de commits da branch '${REPO_BRANCH}'."
     fi
+
+    popd >/dev/null
+    exit 1
 fi
 
 log_success "Ref da aplicação resolvida: ${resolved_ref}"
