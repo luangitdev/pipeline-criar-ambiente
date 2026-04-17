@@ -143,7 +143,23 @@ for entry in "${all_commits[@]}"; do
 done
 
 if [[ -n "$found_commit" ]]; then
-    log "✅ Versão '${APP_VERSION}' encontrada no commit: ${found_commit:0:12} — \"$(git log -1 --format='%s' "$found_commit")\""
+    commit_title="$(git log -1 --format='%s' "$found_commit")"
+    log "✅ Versão '${APP_VERSION}' encontrada no commit: ${found_commit:0:12} — \"${commit_title}\""
+
+    # Verifica se o commit foi diretamente na branch ou via merge
+    # git log --ancestry-path encontra o caminho mais curto até o commit
+    merge_commit="$(git log --merges --ancestry-path --format="%H %s" \
+        "${found_commit}..origin/${REPO_BRANCH}" 2>/dev/null \
+        | tail -1 || true)"
+
+    if [[ -n "$merge_commit" ]]; then
+        merge_hash="${merge_commit%% *}"
+        merge_msg="${merge_commit#* }"
+        log "🔀 Incorporado à branch '${REPO_BRANCH}' via merge: ${merge_hash:0:12} — \"${merge_msg}\""
+    else
+        log "🌿 Commit direto na branch '${REPO_BRANCH}' (sem merge intermediário)"
+    fi
+
     git checkout -q "$found_commit"
     resolved_ref="commit-by-version:${found_commit:0:12}(${found_version})"
 else
