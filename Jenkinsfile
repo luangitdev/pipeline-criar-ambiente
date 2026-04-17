@@ -288,7 +288,7 @@ pipeline {
                             error("❌ REDIRECT_MAPPINGS é obrigatório quando ENABLE_REDIRECT_CONFIG=true!")
                         }
 
-                        def mappings = params.REDIRECT_MAPPINGS.split(/[,\\n]+/).findAll { it.trim() }
+                        def mappings = params.REDIRECT_MAPPINGS.split(/[,\n]+/).findAll { it.trim() }
                         for (def mapping : mappings) {
                             def parts = mapping.trim().split(':')
                             if (parts.size() != 3 || !parts[0].trim() || !parts[1].trim() || !parts[2].trim()) {
