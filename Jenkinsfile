@@ -366,11 +366,22 @@ pipeline {
 
         stage('Test Bastion SSH') {
             steps {
-                sshagent(credentials: ['SSH_PRIVATE_KEY']) {
+                withCredentials([
+                    sshUserPrivateKey(
+                        credentialsId: 'SSH_PRIVATE_KEY',
+                        keyFileVariable: 'SSH_KEY',
+                        passphraseVariable: 'SSH_PASSPHRASE'
+                    )
+                ]) {
                     sh '''
                         set -x
                         echo "Entrou no stage"
-                        ssh -o StrictHostKeyChecking=no infra@34.95.218.99 "echo OK"
+
+                        # Teste simples de conexão
+                        ssh -i "$SSH_KEY" \
+                            -o StrictHostKeyChecking=no \
+                            -o IdentitiesOnly=yes \
+                            infra@34.95.218.99 "echo OK"
                     '''
                 }
             }
