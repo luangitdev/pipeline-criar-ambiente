@@ -676,7 +676,7 @@ ENDDEPLOY
         stage('Test Bastion SSH') {
             steps {
                 withCredentials([
-                    sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY')
+                    sshUserPrivateKey(credentialsId: 'infraPSD', keyFileVariable: 'SSH_KEY')
                 ]) {
                     sh '''
                         ssh -i $SSH_KEY -o StrictHostKeyChecking=no infra@34.95.218.99 "echo CONECTOU"
