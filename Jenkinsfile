@@ -57,7 +57,7 @@ pipeline {
                         ],
                         [$class: 'StringParameterDefinition',
                             name: 'NOME_BANCO',
-                            defaultValue: '',
+                            defaultValue: 'ptf_pipeline_teste',
                             description: 'Nome do banco de dados a ser criado',
                             trim: true
                         ],
@@ -170,7 +170,7 @@ pipeline {
                         ],
                         [$class: 'StringParameterDefinition',
                             name: 'APP_NAME',
-                            defaultValue: 'pathfind_',
+                            defaultValue: 'pathfind_pipeline_teste',
                             description: 'Nome final da aplicação no Tomcat',
                             trim: true
                         ],
@@ -189,7 +189,7 @@ pipeline {
                         ],
                         [$class: 'StringParameterDefinition',
                             name: 'REDIRECT_SERVER_IP',
-                            defaultValue: '',
+                            defaultValue: '34.95.218.99',
                             description: 'IP do servidor Apache2 onde está o uriworkermap.properties para configuração de redirecionamento',
                             trim: true
                         ],
