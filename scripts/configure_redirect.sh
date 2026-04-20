@@ -188,9 +188,17 @@ while IFS= read -r config_line; do
     fi
 done < "$CONFIG_FILE"
 
-# Only write if content changed
+# Proteção: não sobrescrever se o resultado for vazio
 if [[ "$CHANGED" == "true" ]]; then
     # Write updated content to file
+    if [[ -z "$UPDATED_CONTENT" || $(echo "$UPDATED_CONTENT" | grep -v '^$' | wc -l) -eq 0 ]]; then
+        echo "[REMOTE] ❌ ERRO: O conteúdo resultante está vazio. Abortando e restaurando backup!" >&2
+        if [[ -f "$BACKUP_FILE" ]]; then
+            run_sudo cp "$BACKUP_FILE" "$URIWORKERMAP_FILE"
+            echo "[REMOTE] 🔄 Backup restaurado em $URIWORKERMAP_FILE"
+        fi
+        exit 1
+    fi
     echo "[REMOTE] 💾 Gravando alterações no arquivo uriworkermap.properties"
     printf '%s\n' "$UPDATED_CONTENT" | run_sudo tee "$URIWORKERMAP_FILE" > /dev/null
 
