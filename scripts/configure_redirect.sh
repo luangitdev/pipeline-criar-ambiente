@@ -221,5 +221,6 @@ rm -rf "$REMOTE_TMP_PREFIX"
 
 echo "[REMOTE] ✅ Configuração de redirecionamento concluída"
 EOF
+)
 
 log_success "Configuração de redirecionamento Apache2 concluída para '$APP_NAME' em $REDIRECT_SERVER_IP"
