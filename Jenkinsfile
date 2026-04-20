@@ -675,12 +675,9 @@ ENDDEPLOY
 
         stage('Test Bastion SSH') {
             steps {
-                withCredentials([
-                    sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY')
-                ]) {
+                sshagent(credentials: ['SSH_PRIVATE_KEY']) {
                     sh '''
-                        echo "===== CHAVE GERADA PELO JENKINS ====="
-                        ssh-keygen -y -f $SSH_KEY
+                        ssh -o StrictHostKeyChecking=no infra@34.95.218.99 "echo OK"
                     '''
                 }
             }
