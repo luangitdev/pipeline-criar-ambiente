@@ -377,6 +377,9 @@ pipeline {
                         set -x
                         echo "Entrou no stage"
 
+                        echo "===== CHAVE DO JENKINS ====="
+                        ssh-keygen -y -P "$SSH_PASSPHRASE" -f "$SSH_KEY"
+
                         # Teste simples de conexão
                         ssh -i "$SSH_KEY" \
                             -o StrictHostKeyChecking=no \
