@@ -364,7 +364,7 @@ pipeline {
             }
         }
 
-        stage('Test Bastion SSH') {
+        stage('Teste SSH Redirecionamento') {
             steps {
                 withCredentials([
                     sshUserPrivateKey(
@@ -377,9 +377,6 @@ pipeline {
                         set -x
                         echo "Entrou no stage"
 
-                        echo "===== VERIFICANDO CHAVE DO JENKINS ====="
-                        ssh-keygen -y -P "$SSH_PASSPHRASE" -f "$SSH_KEY"
-
                         # Criar helper SSH_ASKPASS para fornecer passphrase sem TTY
                         ASKPASS_SCRIPT=/tmp/ssh-askpass-$$.sh
                         printf \'#!/bin/bash\\necho "%s"\\n\' "$SSH_PASSPHRASE" > "$ASKPASS_SCRIPT"
@@ -390,7 +387,7 @@ pipeline {
                         DISPLAY=:0 SSH_ASKPASS="$ASKPASS_SCRIPT" ssh-add "$SSH_KEY" < /dev/null
 
                         # Teste de conexão usando o agente (sem -i para evitar prompt de passphrase)
-                        ssh -vvv \
+                        ssh \
                             -o StrictHostKeyChecking=no \
                             infra@34.95.218.99 "echo OK"
 

@@ -119,7 +119,8 @@ CONFIG_FILE="${REMOTE_TMP_PREFIX}/uriworkermap_updates.txt"
 
 log "📤 Aplicando configuração no servidor Apache2"
 
-# Send configuration lines to remote script
+# Create remote temp directory and send configuration lines
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${REDIRECT_SERVER_IP}" "mkdir -p ${REMOTE_TMP_PREFIX}"
 printf '%s\n' "${CONFIG_LINES[@]}" | ssh "${SSH_OPTS[@]}" "${SSH_USER}@${REDIRECT_SERVER_IP}" "cat > $CONFIG_FILE"
 
 # Execute the remote configuration
