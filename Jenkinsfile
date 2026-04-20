@@ -381,7 +381,7 @@ pipeline {
                         ssh-keygen -y -P "$SSH_PASSPHRASE" -f "$SSH_KEY"
 
                         # Teste simples de conexão
-                        ssh -i "$SSH_KEY" \
+                        ssh -vvv -i "$SSH_KEY" \
                             -o StrictHostKeyChecking=no \
                             -o IdentitiesOnly=yes \
                             infra@34.95.218.99 "echo OK"
