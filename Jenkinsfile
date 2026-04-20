@@ -679,7 +679,8 @@ ENDDEPLOY
                     sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY')
                 ]) {
                     sh '''
-                        ssh -i $SSH_KEY -o StrictHostKeyChecking=no tarcisio.valecio@34.95.218.99 "echo CONECTOU"
+                        echo "===== CHAVE GERADA PELO JENKINS ====="
+                        ssh-keygen -y -f $SSH_KEY
                     '''
                 }
             }
