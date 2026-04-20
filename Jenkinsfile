@@ -363,6 +363,18 @@ pipeline {
                 }
             }
         }
+
+        stage('Test Bastion SSH') {
+            steps {
+                sshagent(credentials: ['SSH_PRIVATE_KEY']) {
+                    sh '''
+                        set -x
+                        echo "Entrou no stage"
+                        ssh -o StrictHostKeyChecking=no infra@34.95.218.99 "echo OK"
+                    '''
+                }
+            }
+        }
         
         stage('📁 Preparação do Ambiente') {
             steps {
@@ -673,17 +685,6 @@ ENDDEPLOY
             }
         }
 
-        stage('Test Bastion SSH') {
-            steps {
-                sshagent(credentials: ['SSH_PRIVATE_KEY']) {
-                    sh '''
-                        set -x
-                        echo "Entrou no stage"
-                        ssh -o StrictHostKeyChecking=no infra@34.95.218.99 "echo OK"
-                    '''
-                }
-            }
-        }
 
         stage('🔀 Configuração de Redirecionamento') {
             when {
