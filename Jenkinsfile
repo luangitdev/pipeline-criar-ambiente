@@ -377,14 +377,26 @@ pipeline {
                         set -x
                         echo "Entrou no stage"
 
-                        echo "===== CHAVE DO JENKINS ====="
+                        echo "===== VERIFICANDO CHAVE DO JENKINS ====="
                         ssh-keygen -y -P "$SSH_PASSPHRASE" -f "$SSH_KEY"
 
-                        # Teste simples de conexão
-                        ssh -vvv -i "$SSH_KEY" \
+                        # Criar helper SSH_ASKPASS para fornecer passphrase sem TTY
+                        ASKPASS_SCRIPT=/tmp/ssh-askpass-$$.sh
+                        printf \'#!/bin/bash\\necho "%s"\\n\' "$SSH_PASSPHRASE" > "$ASKPASS_SCRIPT"
+                        chmod +x "$ASKPASS_SCRIPT"
+
+                        # Iniciar ssh-agent e adicionar a chave (sem interação de TTY)
+                        eval $(ssh-agent -s)
+                        DISPLAY=:0 SSH_ASKPASS="$ASKPASS_SCRIPT" ssh-add "$SSH_KEY" < /dev/null
+
+                        # Teste de conexão usando o agente (sem -i para evitar prompt de passphrase)
+                        ssh -vvv \
                             -o StrictHostKeyChecking=no \
-                            -o IdentitiesOnly=yes \
                             infra@34.95.218.99 "echo OK"
+
+                        # Limpar
+                        ssh-agent -k
+                        rm -f "$ASKPASS_SCRIPT"
                     '''
                 }
             }
@@ -709,76 +721,37 @@ ENDDEPLOY
                     echo "🔀 Configurando redirecionamento Apache2..."
 
                     withCredentials([
-                        string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
-                        string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
                         string(credentialsId: 'infra-sudo-pswd', variable: 'INFRA_SUDO_PASSWORD'),
-                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE'),
-                        sshUserPrivateKey(credentialsId: 'ssh-credentials', keyFileVariable: 'REDIRECT_SSH_KEY', passphraseVariable: 'REDIRECT_SSH_PASSPHRASE')
+                        sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
                     ]) {
                         def redirectResult = sh(
                             script: """
-                                # Criar script temporário para ssh-add
-                                cat > /tmp/ssh-add-script-\$\$.sh << 'EOF'
-#!/bin/bash
-echo "\$SSH_PASSPHRASE"
-EOF
-                                chmod +x /tmp/ssh-add-script-\$\$.sh
+                                # Helper SSH_ASKPASS: fornece passphrase sem TTY
+                                ASKPASS_SCRIPT=/tmp/ssh-askpass-\$\$.sh
+                                printf '#!/bin/bash\\necho "%s"\\n' "\$SSH_PASSPHRASE" > "\$ASKPASS_SCRIPT"
+                                chmod +x "\$ASKPASS_SCRIPT"
 
-                                # Configurar ssh-agent temporário
+                                # Iniciar ssh-agent e adicionar SSH_PRIVATE_KEY desbloqueada
                                 eval \$(ssh-agent -s)
+                                DISPLAY=:0 SSH_ASKPASS="\$ASKPASS_SCRIPT" ssh-add "\${SSH_KEY}" < /dev/null
 
-                                # Adicionar chave com passphrase
-                                DISPLAY=:0 SSH_ASKPASS=/tmp/ssh-add-script-\$\$.sh ssh-add \${SSH_KEY} < /dev/null
+                                # Executar configuração diretamente no servidor de redirecionamento
+                                # (sem --ssh-key-file: configure_redirect.sh usará o ssh-agent ativo via SSH_AUTH_SOCK)
+                                ${SCRIPTS_PATH}/configure_redirect.sh \\
+                                    --redirect-server-ip "${params.REDIRECT_SERVER_IP}" \\
+                                    --redirect-mappings "${params.REDIRECT_MAPPINGS}" \\
+                                    --app-name "${params.APP_NAME}" \\
+                                    --workspace "${WORKSPACE}" \\
+                                    --ssh-user "infra" \\
+                                    --sudo-password "\${INFRA_SUDO_PASSWORD}"
 
-                                # Criar diretório no bastion e copiar arquivos necessários
-                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "mkdir -p /tmp/pipeline-${BUILD_NUMBER}"
-                                scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
-                                scp -o StrictHostKeyChecking=no "\${REDIRECT_SSH_KEY}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.redirect_ssh_key
-                                ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "chmod 600 /tmp/pipeline-${BUILD_NUMBER}/.redirect_ssh_key"
-                                printf '%s' "\${INFRA_SUDO_PASSWORD}" > "${WORKSPACE}/temp/.infra_sudo_password"
-                                scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.infra_sudo_password" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password
-                                rm -f "${WORKSPACE}/temp/.infra_sudo_password"
+                                EXIT_CODE=\$?
 
-                                # Executar configuração no bastion
-                                ssh -A -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDREDIRECT'
-cd /tmp/pipeline-${BUILD_NUMBER}
-chmod +x scripts/*.sh
-trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password /tmp/pipeline-${BUILD_NUMBER}/.redirect_ssh_key' EXIT
-SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)"
-
-echo "🔀 Executando configuração de redirecionamento..."
-
-# Executar configuração de redirecionamento
-./scripts/configure_redirect.sh \\
-    --redirect-server-ip "${params.REDIRECT_SERVER_IP}" \\
-    --redirect-mappings "${params.REDIRECT_MAPPINGS}" \\
-    --app-name "${params.APP_NAME}" \\
-    --workspace "/tmp/pipeline-${BUILD_NUMBER}" \\
-    --ssh-key-file "/tmp/pipeline-${BUILD_NUMBER}/.redirect_ssh_key" \\
-    --ssh-user "infra" \\
-    --sudo-password "\${SUDO_PASSWORD_REMOTE}"
-
-# Verificar se houve erro na configuração
-if [ \$? -ne 0 ]; then
-    echo "❌ ERRO: Falha na configuração de redirecionamento!"
-    exit 1
-fi
-
-echo "✅ Configuração de redirecionamento concluída com sucesso!"
-ENDREDIRECT
-
-                                # Capturar exit code do SSH
-                                REDIRECT_EXIT_CODE=\$?
-
-                                # Limpar
+                                # Limpar agente e helper
                                 ssh-agent -k
-                                rm -f /tmp/ssh-add-script-\$\$.sh
+                                rm -f "\$ASKPASS_SCRIPT"
 
-                                # Verificar se houve erro
-                                if [ \$REDIRECT_EXIT_CODE -ne 0 ]; then
-                                    echo "❌ ERRO: Configuração de redirecionamento falhou com código: \$REDIRECT_EXIT_CODE"
-                                    exit \$REDIRECT_EXIT_CODE
-                                fi
+                                exit \$EXIT_CODE
                             """,
                             returnStatus: true
                         )
