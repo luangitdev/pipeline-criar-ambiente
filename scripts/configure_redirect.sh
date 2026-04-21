@@ -124,7 +124,7 @@ ssh "${SSH_OPTS[@]}" "${SSH_USER}@${REDIRECT_SERVER_IP}" "mkdir -p ${REMOTE_TMP_
 printf '%s\n' "${CONFIG_LINES[@]}" | ssh "${SSH_OPTS[@]}" "${SSH_USER}@${REDIRECT_SERVER_IP}" "cat > $CONFIG_FILE"
 
 # Execute the remote configuration
-ssh "${SSH_OPTS[@]}" "${SSH_USER}@${REDIRECT_SERVER_IP}" "bash -s" -- "$SUDO_PASSWORD" "$APP_NAME" "$REMOTE_TMP_PREFIX" < <(cat << 'EOF'
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${REDIRECT_SERVER_IP}" "bash -s" -- "$SUDO_PASSWORD" "$APP_NAME" "$REMOTE_TMP_PREFIX" << 'ENDSSH'
 set -euo pipefail
 
 SUDO_PASSWORD="$1"
@@ -190,17 +190,38 @@ done < "$CONFIG_FILE"
 
 # Proteção: não sobrescrever se o resultado for vazio
 if [[ "$CHANGED" == "true" ]]; then
-    # Write updated content to file
-    if [[ -z "$UPDATED_CONTENT" || $(echo "$UPDATED_CONTENT" | grep -v '^$' | wc -l) -eq 0 ]]; then
-        echo "[REMOTE] ❌ ERRO: O conteúdo resultante está vazio. Abortando e restaurando backup!" >&2
+    # Validate content before writing
+    CONTENT_LINES=$(printf '%s
+' "$UPDATED_CONTENT" | grep -v '^[[:space:]]*$' | wc -l)
+    if [[ -z "$UPDATED_CONTENT" || "$CONTENT_LINES" -eq 0 ]]; then
+        echo "[REMOTE] ❌ ERRO: O conteúdo resultante está vazio. Abortando!" >&2
+        exit 1
+    fi
+
+    # Write to temp file first, then move atomically
+    TEMP_WRITE_FILE="${REMOTE_TMP_PREFIX}/uriworkermap_new.properties"
+    printf '%s
+' "$UPDATED_CONTENT" > "$TEMP_WRITE_FILE"
+
+    # Validate temp file is not empty before applying
+    if [[ ! -s "$TEMP_WRITE_FILE" ]]; then
+        echo "[REMOTE] ❌ ERRO: Arquivo temporário ficou vazio após escrita. Abortando!" >&2
+        exit 1
+    fi
+
+    echo "[REMOTE] 💾 Gravando alterações no arquivo uriworkermap.properties"
+    run_sudo cp "$TEMP_WRITE_FILE" "$URIWORKERMAP_FILE"
+
+    # Post-write validation: ensure file is not empty
+    WRITTEN_SIZE=$(run_sudo wc -c < "$URIWORKERMAP_FILE" 2>/dev/null || echo 0)
+    if [[ "$WRITTEN_SIZE" -eq 0 ]]; then
+        echo "[REMOTE] ❌ ERRO: Arquivo ficou vazio após escrita! Restaurando backup..." >&2
         if [[ -f "$BACKUP_FILE" ]]; then
             run_sudo cp "$BACKUP_FILE" "$URIWORKERMAP_FILE"
-            echo "[REMOTE] 🔄 Backup restaurado em $URIWORKERMAP_FILE"
+            echo "[REMOTE] 🔄 Backup restaurado: $BACKUP_FILE"
         fi
         exit 1
     fi
-    echo "[REMOTE] 💾 Gravando alterações no arquivo uriworkermap.properties"
-    printf '%s\n' "$UPDATED_CONTENT" | run_sudo tee "$URIWORKERMAP_FILE" > /dev/null
 
     # Reload Apache2
     echo "[REMOTE] 🔄 Recarregando Apache2"
@@ -228,7 +249,6 @@ fi
 rm -rf "$REMOTE_TMP_PREFIX"
 
 echo "[REMOTE] ✅ Configuração de redirecionamento concluída"
-EOF
-)
+ENDSSH
 
 log_success "Configuração de redirecionamento Apache2 concluída para '$APP_NAME' em $REDIRECT_SERVER_IP"
