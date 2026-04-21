@@ -150,35 +150,61 @@ if [[ "$CHANGED" != "true" ]]; then
     exit 0
 fi
 
-# Validação do conteúdo antes de qualquer escrita
-CONTENT_LINES=$(printf '%s\n' "$UPDATED_CONTENT" | grep -c '[^[:space:]]' || true)
-if [[ -z "$UPDATED_CONTENT" || "$CONTENT_LINES" -eq 0 ]]; then
-    echo "[REMOTE] ❌ ERRO: Conteúdo resultante está vazio. Abortando sem modificar o arquivo." >&2
+# Valida o resultado final em cópia temporária antes de tocar no arquivo original
+TEMP_VALIDATE_FILE="${REMOTE_TMP_PREFIX}/uriworkermap_validate.properties"
+printf '%s\n' "$UPDATED_CONTENT" > "$TEMP_VALIDATE_FILE"
+
+if [[ ! -s "$TEMP_VALIDATE_FILE" ]]; then
+    echo "[REMOTE] ❌ ERRO: Conteúdo resultante está vazio. Abortando sem modificar o arquivo original." >&2
     rm -rf "$REMOTE_TMP_PREFIX"
     exit 1
 fi
 
-# Escrita em arquivo temporário primeiro
-TEMP_WRITE_FILE="${REMOTE_TMP_PREFIX}/uriworkermap_new.properties"
-printf '%s\n' "$UPDATED_CONTENT" > "$TEMP_WRITE_FILE"
+echo "[REMOTE] 💾 Aplicando alterações diretamente no arquivo original"
 
-if [[ ! -s "$TEMP_WRITE_FILE" ]]; then
-    echo "[REMOTE] ❌ ERRO: Arquivo temporário ficou vazio. Abortando." >&2
-    rm -rf "$REMOTE_TMP_PREFIX"
-    exit 1
-fi
-
-echo "[REMOTE] 💾 Aplicando alterações"
-run_sudo cp "$TEMP_WRITE_FILE" "$URIWORKERMAP_FILE"
-
-# Validação pós-escrita
-WRITTEN_SIZE=$(run_sudo wc -c < "$URIWORKERMAP_FILE" 2>/dev/null || echo 0)
-if [[ "$WRITTEN_SIZE" -eq 0 ]]; then
-    echo "[REMOTE] ❌ ERRO: Arquivo ficou vazio após escrita! Restaurando backup..." >&2
+restore_backup() {
+    echo "[REMOTE] 🔄 Restaurando backup: $BACKUP_FILE" >&2
     run_sudo cp "$BACKUP_FILE" "$URIWORKERMAP_FILE"
-    echo "[REMOTE] 🔄 Backup restaurado: $BACKUP_FILE"
     rm -rf "$REMOTE_TMP_PREFIX"
     exit 1
+}
+
+# Re-processa o CONFIG_FILE aplicando cirurgicamente no arquivo original:
+# - linhas existentes: sed in-place (não recria o arquivo)
+# - linhas novas: append com tee -a (nunca sobrescreve)
+# Valida antes e depois de cada operação que a contagem de linhas é a esperada
+while IFS= read -r config_line; do
+    [[ -z "$config_line" ]] && continue
+
+    key=$(printf '%s' "$config_line" | cut -d'=' -f1)
+    escaped_key=$(printf '%s' "$key" | sed 's/[]\/$*.^[]/\\&/g')
+    escaped_line=$(printf '%s' "$config_line" | sed 's/[\/&]/\\&/g')
+
+    LINES_BEFORE=$(run_sudo wc -l < "$URIWORKERMAP_FILE")
+
+    if run_sudo grep -q "^${escaped_key}=" "$URIWORKERMAP_FILE"; then
+        echo "[REMOTE] 📝 Atualizando (sed in-place): $config_line"
+        run_sudo sed -i "s|^${escaped_key}=.*|${escaped_line}|" "$URIWORKERMAP_FILE"
+        LINES_EXPECTED=$LINES_BEFORE
+    else
+        echo "[REMOTE] ➕ Adicionando ao fim: $config_line"
+        printf '%s\n' "$config_line" | run_sudo tee -a "$URIWORKERMAP_FILE" > /dev/null
+        LINES_EXPECTED=$((LINES_BEFORE + 1))
+    fi
+
+    LINES_AFTER=$(run_sudo wc -l < "$URIWORKERMAP_FILE")
+    if [[ "$LINES_AFTER" -ne "$LINES_EXPECTED" ]]; then
+        echo "[REMOTE] ❌ ERRO: Contagem de linhas inesperada após operação em '$config_line'." >&2
+        echo "[REMOTE]    Esperado: $LINES_EXPECTED | Obtido: $LINES_AFTER" >&2
+        restore_backup
+    fi
+    echo "[REMOTE] ✔ Linhas no arquivo: $LINES_AFTER (esperado: $LINES_EXPECTED)"
+done < "$CONFIG_FILE"
+
+# Validação pós-escrita: arquivo não pode estar vazio
+if [[ $(run_sudo wc -c < "$URIWORKERMAP_FILE" 2>/dev/null || echo 0) -eq 0 ]]; then
+    echo "[REMOTE] ❌ ERRO: Arquivo ficou vazio após escrita!" >&2
+    restore_backup
 fi
 
 # Reload Apache2
