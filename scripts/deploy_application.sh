@@ -177,14 +177,18 @@ mapfile -t app_prop_files < <(find "$APP_STAGING_DIR" -type f -name "application
 if [[ "${#app_prop_files[@]}" -eq 0 ]]; then
     log_warning "Nenhum application.properties encontrado no conteúdo extraído."
 else
-    if [[ -n "$LANGUAGE_ENDPOINT" ]]; then
+    if [[ -n "$LANGUAGE_ENDPOINT" && "$TIPO_AMBIENTE" == "ptf" ]]; then
         language_url="http://${LANGUAGE_ENDPOINT}/api/v1"
         for file in "${app_prop_files[@]}"; do
             log "⚙️ Atualizando ptf-idioma.language-url em: $file"
             upsert_property "$file" "ptf-idioma.language-url" "$language_url"
         done
     else
-        log "ℹ️ Mapeamento de idioma desconsiderado para $DEPLOY_SERVER_NAME; valor atual será mantido."
+        if [[ "$TIPO_AMBIENTE" == "pln" ]]; then
+            log "ℹ️ ptf-idioma.language-url ignorado para ambiente PLN."
+        else
+            log "ℹ️ Mapeamento de idioma desconsiderado para $DEPLOY_SERVER_NAME; valor atual será mantido."
+        fi
     fi
 fi
 
