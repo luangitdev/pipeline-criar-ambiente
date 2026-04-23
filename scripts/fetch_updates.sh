@@ -199,10 +199,9 @@ while IFS= read -r -d '' sql_file; do
             continue
         fi
 
-        log_error "Conflito de arquivo SQL duplicado: $base_file"
-        log_error " - Já copiado: $target_file"
-        log_error " - Novo arquivo: $sql_file"
-        exit 1
+        log_warning "Conflito de arquivo SQL duplicado: $base_file — substituindo pelo mais recente"
+        log_warning " - Substituído: $target_file"
+        log_warning " - Novo arquivo: $sql_file"
     fi
 
     cp "$sql_file" "$target_file"
