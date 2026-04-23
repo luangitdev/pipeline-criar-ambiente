@@ -179,8 +179,36 @@ should_skip_outros_path() {
     return 1
 }
 
+should_skip_pln_specific() {
+    local file_path="$1"
+    local rel_path="${file_path#$SOURCE_DIR/}"
+
+    # Ignorar arquivos .sql soltos na raiz (sem subpasta)
+    if [[ "$rel_path" != */* ]]; then
+        return 0
+    fi
+
+    # Ignorar pasta serialização (e variações)
+    local segment
+    IFS='/' read -r -a path_parts <<< "$rel_path"
+    for segment in "${path_parts[@]}"; do
+        if [[ "$segment" =~ ^[Ss]erializa ]]; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+skipped_pln=0
+
 while IFS= read -r -d '' sql_file; do
     if should_skip_outros_path "$sql_file"; then
+        continue
+    fi
+
+    if [[ "$TIPO_AMBIENTE" == "pln" ]] && should_skip_pln_specific "$sql_file"; then
+        skipped_pln=$((skipped_pln + 1))
         continue
     fi
 
@@ -217,5 +245,8 @@ else
     fi
     if [[ "$skipped_old_version" -gt 0 ]]; then
         log_warning "$skipped_old_version arquivo(s) ignorado(s) por estarem em pastas de versão antiga (major < $BASE_MAJOR)"
+    fi
+    if [[ "$skipped_pln" -gt 0 ]]; then
+        log_warning "$skipped_pln arquivo(s) PLN ignorado(s) (raiz ou pasta serialização)"
     fi
 fi
