@@ -212,6 +212,22 @@ fi
 
 log_success "Ref da aplicação resolvida: ${resolved_ref}"
 
+JAVA_HOME_17=""
+for candidate in "/usr/lib/jvm/java-17-openjdk-amd64" "/usr/lib/jvm/java-17-openjdk" "/usr/lib/jvm/temurin-17" "/usr/local/lib/jvm/java-17"; do
+    if [[ -d "$candidate" ]]; then
+        JAVA_HOME_17="$candidate"
+        break
+    fi
+done
+
+if [[ -n "$JAVA_HOME_17" ]]; then
+    log "☁️ Forçando JAVA_HOME para Java 17: $JAVA_HOME_17"
+    export JAVA_HOME="$JAVA_HOME_17"
+    export PATH="$JAVA_HOME/bin:$PATH"
+else
+    log_warning "Java 17 não encontrado nos caminhos padrão; usando JAVA_HOME atual: ${JAVA_HOME:-não definido}"
+fi
+
 if [[ -x "./mvnw" ]]; then
     log "🔨 Build com Maven Wrapper"
     ./mvnw -DskipTests package
