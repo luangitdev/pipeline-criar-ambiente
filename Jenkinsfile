@@ -227,7 +227,7 @@ pipeline {
                         error("❌ Nome do banco é obrigatório!")
                     }
                     
-                    def versaoBanco = params.VERSAO_BANCO?.trim()
+                    def versaoBanco = params.VERSAO_BANCO?.trim()?.replaceAll('[,;\\s]', '')
                     def versaoAppParam = params.VERSAO_APP?.trim()
                     
                     // Definir nome customizado para o build
