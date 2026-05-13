@@ -60,10 +60,10 @@ if [[ -f "$DADOS_FILE" ]]; then
                 ESTADO="$value"
                 ESTADO_NOME="$value"
                 ;;
-            "cep") CEP="$value" ;;
+            "cep") CEP="$(echo "$value" | tr -cd '0-9')" ;;
             "lat"|"latitude") LAT="$value" ;;
             "long"|"longitude") LONG="$value" ;;
-            "cnpj") CNPJ="$value" ;;
+            "cnpj") CNPJ="$(echo "$value" | tr -cd '0-9')" ;;
             "razao_social") RAZAO_SOCIAL="$value" ;;
         esac
     done < "$temp_file"
