@@ -221,9 +221,9 @@ log_success "Template $TEMPLATE_DB encontrado no $TEMPLATE_SERVER_NAME!"
 # 3. Criar banco de dados copiando template do GCP01
 log "🗄️ Criando banco $NOME_BANCO no servidor de destino..."
 
-# Primeiro verificar se o banco já existe no destino
-# Conectar no template para fazer a verificação
-if run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "\l" | grep -qw "$NOME_BANCO"; then
+# Primeiro verificar se o banco já existe no destino via query SQL (evita truncamento de nomes longos no \l)
+DB_EXISTS=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -tAc "SELECT 1 FROM pg_database WHERE datname = '$NOME_BANCO';" 2>/dev/null || echo "")
+if [[ "$DB_EXISTS" == "1" ]]; then
     if [[ "$ALLOW_EXISTING_DB" == "true" ]]; then
         log_warning "Banco $NOME_BANCO já existe no servidor de destino e ALLOW_EXISTING_DB=true; continuando sem recriar."
     else
@@ -236,8 +236,10 @@ if run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d
 else
     # Criar banco vazio no destino
     log "📄 Criando banco vazio no destino..."
-    if ! execute_sql "CREATE DATABASE \"$NOME_BANCO\";" 2>/dev/null; then
-        log_error "Falha ao criar banco vazio $NOME_BANCO no servidor de destino"
+    CREATE_DB_OUTPUT=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "CREATE DATABASE \"$NOME_BANCO\";" 2>&1)
+    if [[ $? -ne 0 ]]; then
+        log_error "Falha ao criar banco vazio $NOME_BANCO no servidor de destino:"
+        echo "$CREATE_DB_OUTPUT"
         exit 1
     fi
     log_success "Banco vazio criado no destino!"
