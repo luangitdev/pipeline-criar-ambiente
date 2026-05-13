@@ -63,7 +63,15 @@ if [[ -f "$DADOS_FILE" ]]; then
             "cep") CEP="$(echo "$value" | tr -cd '0-9')" ;;
             "lat"|"latitude") LAT="$value" ;;
             "long"|"longitude") LONG="$value" ;;
-            "cnpj") CNPJ="$(echo "$value" | tr -cd '0-9')" ;;
+            "cnpj")
+                CNPJ="$(echo "$value" | tr -cd '0-9')"
+                local cnpj_len=${#CNPJ}
+                if [[ "$cnpj_len" -gt 14 ]]; then
+                    log_warning "CNPJ com $cnpj_len dígitos (esperado 14): '$CNPJ' — truncando para 14"
+                    CNPJ="${CNPJ:0:14}"
+                fi
+                log "🔢 CNPJ sanitizado: '$CNPJ' (${#CNPJ} dígitos)"
+                ;;
             "razao_social") RAZAO_SOCIAL="$value" ;;
         esac
     done < "$temp_file"
