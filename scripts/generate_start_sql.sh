@@ -118,20 +118,29 @@ else
     # Template para PLN
     cat > "$OUTPUT_FILE" << EOF
 -- DADOS INICIAIS GERADOS DINAMICAMENTE PARA AMBIENTE PLN
+-- Utiliza ON CONFLICT para sobrescrever dados do template com os dados corretos do ambiente
 INSERT INTO empresa(id, cnpj, nome, produto) 
-VALUES(1, '$CNPJ', '$RAZAO_SOCIAL', 'PLANNER');
+VALUES(1, '$CNPJ', '$RAZAO_SOCIAL', 'PLANNER')
+ON CONFLICT (id) DO UPDATE SET cnpj = EXCLUDED.cnpj, nome = EXCLUDED.nome, produto = EXCLUDED.produto;
 
 INSERT INTO estado(id, nome, sigla) 
-VALUES(1, '$ESTADO_NOME', '$ESTADO');
+VALUES(1, '$ESTADO_NOME', '$ESTADO')
+ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, sigla = EXCLUDED.sigla;
 
 INSERT INTO cidade(id, nome, estado_id) 
-VALUES(1, '$CIDADE', 1);
+VALUES(1, '$CIDADE', 1)
+ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, estado_id = EXCLUDED.estado_id;
 
 INSERT INTO maparoutes(id, descricao, nome, referencia) 
-VALUES(1, '$ESTADO_NOME', '$ESTADO', 1);
+VALUES(1, '$ESTADO_NOME', '$ESTADO', 1)
+ON CONFLICT (id) DO UPDATE SET descricao = EXCLUDED.descricao, nome = EXCLUDED.nome, referencia = EXCLUDED.referencia;
 
 INSERT INTO centrodistribuicao(id, nome, endereco, bairro, cep, latitude, longitude, id_empresa, id_cidade, identificador, mapa_id)
-VALUES(1, '$RAZAO_SOCIAL', '$ENDERECO', '$BAIRRO', '$CEP', $LAT, $LONG, 1, 1, '1', 1);
+VALUES(1, '$RAZAO_SOCIAL', '$ENDERECO', '$BAIRRO', '$CEP', $LAT, $LONG, 1, 1, '1', 1)
+ON CONFLICT (id) DO UPDATE SET nome = EXCLUDED.nome, endereco = EXCLUDED.endereco, bairro = EXCLUDED.bairro,
+    cep = EXCLUDED.cep, latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude,
+    id_empresa = EXCLUDED.id_empresa, id_cidade = EXCLUDED.id_cidade,
+    identificador = EXCLUDED.identificador, mapa_id = EXCLUDED.mapa_id;
 EOF
 
 fi

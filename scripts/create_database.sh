@@ -161,20 +161,11 @@ execute_sql_file() {
     
     log "📄 Executando: $(basename "$file")"
     
-    # Executar SQL capturando erros mas não falhando se for erro de dados
-    if ! SQL_OUTPUT=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -f "$file" 2>&1); then
-        # Se contém erros de schema/dados, avisar mas continuar
-        if echo "$SQL_OUTPUT" | grep -q "does not exist\|already exists\|duplicate key"; then
-            log_warning "Avisos SQL em $(basename "$file"):"
-            echo "$SQL_OUTPUT" | grep "ERROR\|WARNING" || true
-            log_warning "Continuando execução (erros de dados/schema podem ser normais)"
-            return 0
-        else
-            # Outros erros são críticos
-            log_error "Falha crítica ao executar $(basename "$file"):"
-            echo "$SQL_OUTPUT"
-            return 1
-        fi
+    # Executar SQL com ON_ERROR_STOP para detectar falhas individuais de SQL
+    if ! SQL_OUTPUT=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$database" -v ON_ERROR_STOP=1 -f "$file" 2>&1); then
+        log_error "Falha ao executar $(basename "$file"):"
+        echo "$SQL_OUTPUT"
+        return 1
     fi
     return 0
 }
