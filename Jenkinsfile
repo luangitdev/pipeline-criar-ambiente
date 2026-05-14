@@ -800,21 +800,15 @@ EOF
                             scp -o StrictHostKeyChecking=no -r ${WORKSPACE}/scripts/ \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/
                             scp -o StrictHostKeyChecking=no "\${DEPLOY_SSH_KEY}" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key
                             ssh -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} "chmod 600 /tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key"
-                            printf '%s' "\${DB_USER}" > "${WORKSPACE}/temp/.db_user"
-                            printf '%s' "\${DB_PASSWORD}" > "${WORKSPACE}/temp/.db_password"
                             printf '%s' "\${INFRA_SUDO_PASSWORD}" > "${WORKSPACE}/temp/.infra_sudo_password"
-                            scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.db_user" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.db_user
-                            scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.db_password" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.db_password
                             scp -o StrictHostKeyChecking=no "${WORKSPACE}/temp/.infra_sudo_password" \${BASTION_USER}@\${BASTION_HOST}:/tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password
-                            rm -f "${WORKSPACE}/temp/.db_user" "${WORKSPACE}/temp/.db_password" "${WORKSPACE}/temp/.infra_sudo_password"
+                            rm -f "${WORKSPACE}/temp/.infra_sudo_password"
                             
                             # Executar verificações no bastion
                             ssh -A -o StrictHostKeyChecking=no \${BASTION_USER}@\${BASTION_HOST} << 'ENDVERIFY'
 cd /tmp/pipeline-${BUILD_NUMBER}
 chmod +x scripts/*.sh
-trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.db_user /tmp/pipeline-${BUILD_NUMBER}/.db_password /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password /tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key' EXIT
-DB_USER_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.db_user)"
-DB_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.db_password)"
+trap 'rm -f /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password /tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key' EXIT
 SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)"
 
 echo "🔍 Executando verificações..."
@@ -825,8 +819,8 @@ if [ "${params.CRIAR_BANCO}" = "true" ]; then
         --nome-banco "${params.NOME_BANCO}" \\
         --db-host "${env.DB_HOST}" \\
         --db-port "${env.DB_PORT}" \\
-        --db-user "\${DB_USER_REMOTE}" \\
-        --db-password "\${DB_PASSWORD_REMOTE}"
+        --db-user "${DB_USER}" \\
+        --db-password "${DB_PASSWORD}"
 fi
 
 # Verificar deploy se foi executado
