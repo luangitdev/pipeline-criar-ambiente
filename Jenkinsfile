@@ -48,7 +48,7 @@ pipeline {
                                 fallbackScript: [classpath: [], sandbox: true, script: 'return ["GCP01"]'],
                                 script: [classpath: [], sandbox: true, script: '''
                                     if (TIPO_AMBIENTE == "PLN") {
-                                        return ["GCP-PLN", "OCI-PLN-QA", "OCI-DB-QA"]
+                                        return ["GCP-PLN", "OCI-DB-QA"]
                                     } else {
                                         return ["GCP01", "GCP02", "GCP03", "OCI-DB-IMP", "OCI-DB-QA"]
                                     }
@@ -462,10 +462,29 @@ pipeline {
                     withCredentials([
                         string(credentialsId: 'BASTION_HOST', variable: 'BASTION_HOST'),
                         string(credentialsId: 'BASTION_USER', variable: 'BASTION_USER'),
-                        string(credentialsId: 'db-pathfind-user', variable: 'DB_USER'),
-                        string(credentialsId: 'db-pathfind-password', variable: 'DB_PASSWORD'),
+                        string(credentialsId: 'db-pathfind-user', variable: 'DB_USER_GCP'),
+                        string(credentialsId: 'db-pathfind-password', variable: 'DB_PASSWORD_GCP'),
+                        string(credentialsId: 'db-pathfind-user-oci', variable: 'DB_USER_OCI'),
+                        string(credentialsId: 'db-pathfind-password-oci-db-qa', variable: 'DB_PASSWORD_OCI_DB_QA'),
+                        string(credentialsId: 'db-pathfind-password-oci-db-imp', variable: 'DB_PASSWORD_OCI_DB_IMP'),
                         sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
                     ]) {
+                        def servidorLower = params.SERVIDOR.toLowerCase()
+                        def ociPasswordMap = [
+                            'oci-db-qa'  : env.DB_PASSWORD_OCI_DB_QA,
+                            'oci-db-imp' : env.DB_PASSWORD_OCI_DB_IMP
+                        ]
+                        if (servidorLower.startsWith('oci-')) {
+                            if (!ociPasswordMap.containsKey(servidorLower)) {
+                                error("❌ Servidor OCI '${params.SERVIDOR}' não possui credencial de senha mapeada no pipeline.")
+                            }
+                            env.DB_USER     = env.DB_USER_OCI
+                            env.DB_PASSWORD = ociPasswordMap[servidorLower]
+                        } else {
+                            env.DB_USER     = env.DB_USER_GCP
+                            env.DB_PASSWORD = env.DB_PASSWORD_GCP
+                        }
+
                         def createResult = sh(
                             script: """
                                 # Criar script temporário para ssh-add
