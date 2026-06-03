@@ -48,9 +48,9 @@ pipeline {
                                 fallbackScript: [classpath: [], sandbox: true, script: 'return ["GCP01"]'],
                                 script: [classpath: [], sandbox: true, script: '''
                                     if (TIPO_AMBIENTE == "PLN") {
-                                        return ["GCP-PLN", "OCI-PLN-QA"]
+                                        return ["GCP-PLN", "OCI-PLN-QA", "OCI-DB-QA"]
                                     } else {
-                                        return ["GCP01", "GCP02", "GCP03"]
+                                        return ["GCP01", "GCP02", "GCP03", "OCI-DB-IMP", "OCI-DB-QA"]
                                     }
                                 ''']
                             ]
