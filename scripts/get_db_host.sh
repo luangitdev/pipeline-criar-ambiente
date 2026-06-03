@@ -26,11 +26,14 @@ case "$SERVIDOR" in
     "gcp-pln")
         echo "10.200.0.3"
         ;;
+    "oci-pln-qa")
+        echo "164.152.198.41"
+        ;;
     "gcp03")
         echo "10.200.0.40"
         ;;
     *)
-        echo "❌ Servidor desconhecido: $SERVIDOR (esperado: gcp01, gcp02, gcp03 ou gcp-pln)" >&2
+        echo "❌ Servidor desconhecido: $SERVIDOR (esperado: gcp01, gcp02, gcp03, gcp-pln ou oci-pln-qa)" >&2
         exit 1
         ;;
 esac

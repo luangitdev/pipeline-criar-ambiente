@@ -46,6 +46,14 @@ servers:
     description: "Servidor secundário GCP"
     environments: ["ptf", "pln"]
     
+  oci-pln-qa:
+    name: "OCI PLN QA"
+    host: "164.152.198.41"
+    description: "Servidor OCI para ambiente PLN QA"
+    environments: ["pln"]
+    ssh_user: "infra"
+    provider: "oci"
+
   local01:
     name: "Local Development"
     host: "localhost"

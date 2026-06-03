@@ -48,7 +48,7 @@ pipeline {
                                 fallbackScript: [classpath: [], sandbox: true, script: 'return ["GCP01"]'],
                                 script: [classpath: [], sandbox: true, script: '''
                                     if (TIPO_AMBIENTE == "PLN") {
-                                        return ["GCP-PLN"]
+                                        return ["GCP-PLN", "OCI-PLN-QA"]
                                     } else {
                                         return ["GCP01", "GCP02", "GCP03"]
                                     }
@@ -124,6 +124,7 @@ pipeline {
                                 script: [classpath: [], sandbox: true, script: '''
                                     if (TIPO_AMBIENTE == "PLN") {
                                         return [
+                                            "OCI-PLN-QA:164.152.198.41",
                                             "PROD-02:34.151.209.238",
                                             "PROD-03:35.199.116.136",
                                             "PROD-04:35.198.30.206",
