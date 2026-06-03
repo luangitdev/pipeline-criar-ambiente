@@ -27,6 +27,9 @@ upsert_property() {
 WAR_FILE=""
 NOME_BANCO=""
 DB_HOST=""
+DB_INTERNAL_HOST=""
+DB_USER=""
+DB_PASSWORD=""
 DB_PORT="5432"
 TIPO_AMBIENTE=""
 DEPLOY_SERVER_NAME=""
@@ -49,6 +52,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --db-host)
             DB_HOST="$2"
+            shift 2
+            ;;
+        --db-internal-host)
+            DB_INTERNAL_HOST="$2"
+            shift 2
+            ;;
+        --db-user)
+            DB_USER="$2"
+            shift 2
+            ;;
+        --db-password)
+            DB_PASSWORD="$2"
             shift 2
             ;;
         --db-port)
@@ -166,11 +181,14 @@ if [[ "${#login_files[@]}" -eq 0 ]]; then
 else
     for file in "${login_files[@]}"; do
         log "⚙️ Atualizando login.properties: $file"
-        upsert_property "$file" "database.serverHost" "${DB_HOST}:5432"
+        local jdbc_host="${DB_INTERNAL_HOST:-$DB_HOST}"
+        local login_user="${DB_USER:-pathfinddb}"
+        local login_password="${DB_PASSWORD:-Find**(path)\$DB}"
+        upsert_property "$file" "database.serverHost" "${jdbc_host}:5432"
         upsert_property "$file" "database.databaseName" "$NOME_BANCO"
-        upsert_property "$file" "database.user" "pathfinddb"
-        upsert_property "$file" "database.password" "Find**(path)\$DB"
-        upsert_property "$file" "database.jdbcurl" "jdbc:postgresql://${DB_HOST}:5432/${NOME_BANCO}"
+        upsert_property "$file" "database.user" "$login_user"
+        upsert_property "$file" "database.password" "$login_password"
+        upsert_property "$file" "database.jdbcurl" "jdbc:postgresql://${jdbc_host}:5432/${NOME_BANCO}"
     done
 fi
 

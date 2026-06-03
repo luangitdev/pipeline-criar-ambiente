@@ -348,6 +348,22 @@ pipeline {
                         returnStdout: true
                     ).trim()
 
+                    // Mapeamento de IP interno por servidor (usado no jdbcurl do login.properties)
+                    def dbInternalHostMap = [
+                        'oci-db-qa'  : '10.0.2.143',
+                        'oci-db-imp' : '10.0.1.245'
+                    ]
+                    env.DB_INTERNAL_HOST = dbInternalHostMap.get(params.SERVIDOR.toLowerCase(), env.DB_HOST)
+
+                    // Credenciais de banco para o login.properties no deploy
+                    def deployDbCredsByServer = [
+                        'oci-db-qa'  : [user: 'ociadm',     password: 'Mobiis@path#2026'],
+                        'oci-db-imp' : [user: 'ociadm',     password: ''],   // ajuste quando definido
+                    ]
+                    def deployDbCreds = deployDbCredsByServer.get(params.SERVIDOR.toLowerCase(), [user: 'pathfinddb', password: 'Find**(path)$DB'])
+                    env.DEPLOY_DB_USER     = deployDbCreds.user
+                    env.DEPLOY_DB_PASSWORD = deployDbCreds.password
+
                     def appRepoDefaults = [
                         'PTF': [url: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Roteirizador/_git/pathfind', branch: 'mvp'],
                         'PLN': [url: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Planner%20e%20Torre/_git/planner', branch: 'v8']
@@ -650,6 +666,9 @@ SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)
     --war-file "/tmp/pipeline-${BUILD_NUMBER}/app.war" \\
     --nome-banco "${params.NOME_BANCO}" \\
     --db-host "${env.DB_HOST}" \\
+    --db-internal-host "${env.DB_INTERNAL_HOST}" \\
+    --db-user "${env.DEPLOY_DB_USER}" \\
+    --db-password "${env.DEPLOY_DB_PASSWORD}" \\
     --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
     --deploy-server-name "${env.DEPLOY_SERVER_NAME}" \\
     --deploy-server-ip "${env.DEPLOY_SERVER_IP}" \\
