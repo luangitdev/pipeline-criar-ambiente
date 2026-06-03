@@ -68,6 +68,15 @@ servers:
     environments: ["pln", "ptf"]
     provider: "oci"
 
+  oci-ptf-qa:
+    name: "OCI PTF QA Deploy"
+    host: "134.65.30.12"
+    description: "Servidor de deploy OCI para ambiente PTF QA"
+    environments: ["ptf"]
+    ssh_user: "infra"
+    server_type: "deploy"
+    provider: "oci"
+
   local01:
     name: "Local Development"
     host: "localhost"

@@ -134,6 +134,7 @@ pipeline {
                                         ]
                                     } else {
                                         return [
+                                            "OCI-PTF-QA:134.65.30.12",
                                             "IMP-01:34.95.251.169",
                                             "PROD-01:35.247.243.102",
                                             "PROD-02:35.199.97.30",
@@ -357,8 +358,8 @@ pipeline {
 
                     // Credenciais de banco para o login.properties no deploy
                     def deployDbCredsByServer = [
-                        'oci-db-qa'  : [user: 'ociadm',     password: 'Mobiis@path#2026'],
-                        'oci-db-imp' : [user: 'ociadm',     password: ''],   // ajuste quando definido
+                        'oci-db-qa'  : [user: 'ociadm', password: 'Mobiis@path#2026'],
+                        'oci-db-imp' : [user: 'ociadm', password: 'Mobi!sfor#2027%'],
                     ]
                     def deployDbCreds = deployDbCredsByServer.get(params.SERVIDOR.toLowerCase(), [user: 'pathfinddb', password: 'Find**(path)$DB'])
                     env.DEPLOY_DB_USER     = deployDbCreds.user

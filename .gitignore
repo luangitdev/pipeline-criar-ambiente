@@ -16,3 +16,6 @@ erro.log
 # Modelos
 *.codex
 *SPEC*.md
+*AGENT*.md
+scripts.*.md
+*.prompt.md
