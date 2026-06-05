@@ -292,6 +292,7 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                     
                     def versaoBanco = params.VERSAO_BANCO?.trim()?.replaceAll('[,;\\s]', '')
                     env.VERSAO_BANCO_CLEAN = versaoBanco
+                    env.MULTIBANCO_CLEAN = params.MULTIBANCO?.toString()?.trim()?.replaceAll('[,;\\s]', '') ?: 'false'
                     def versaoAppParam = params.VERSAO_APP?.trim()
                     
                     // Definir nome customizado para o build
@@ -681,7 +682,7 @@ echo "================================="
     --db-password "${DB_PASSWORD}" \\
     --workspace "/tmp/pipeline-${BUILD_NUMBER}" \\
     --updates-dir "/tmp/pipeline-${BUILD_NUMBER}/temp/sql_updates/${params.TIPO_AMBIENTE.toLowerCase()}/updates" \\
-    --multibanco "${params.MULTIBANCO}" \\
+    --multibanco "${env.MULTIBANCO_CLEAN}" \\
     --bancos-filiais-file "/tmp/pipeline-${BUILD_NUMBER}/temp/bancos_filiais.txt"
 
 # Verificar se houve erro na criação
@@ -803,7 +804,7 @@ SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)
     --app-name "${params.APP_NAME}" \\
     --ssh-key-file "/tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key" \\
     --workspace "/tmp/pipeline-${BUILD_NUMBER}" \\
-    --multibanco "${params.MULTIBANCO}" \\
+    --multibanco "${env.MULTIBANCO_CLEAN}" \\
     --sudo-password "\${SUDO_PASSWORD_REMOTE}"
 
 # Verificar se houve erro no deploy
