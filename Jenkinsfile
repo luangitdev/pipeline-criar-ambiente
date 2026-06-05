@@ -37,24 +37,41 @@ pipeline {
                             defaultValue: true,
                             description: 'Executar criação do banco de dados'
                         ],
-                        [$class: 'BooleanParameterDefinition',
+                        [$class: 'DynamicReferenceParameter',
+                            choiceType: 'ET_FORMATTED_HTML',
+                            description: 'Habilitar criação de ambiente multibanco (múltiplas bases filiais). Disponível apenas para PTF.',
                             name: 'MULTIBANCO',
-                            defaultValue: false,
-                            description: 'Habilitar criação de ambiente multibanco (múltiplas bases filiais)'
+                            omitValueField: false,
+                            referencedParameters: 'TIPO_AMBIENTE',
+                            script: [
+                                $class: 'GroovyScript',
+                                fallbackScript: [classpath: [], sandbox: true, script: 'return "<input name=\'value\' value=\'false\' type=\'hidden\'>"'],
+                                script: [classpath: [], sandbox: true, script: '''
+                                    if (TIPO_AMBIENTE == "PTF") {
+                                        return "<label><input name=\'value\' type=\'checkbox\' value=\'true\' onclick=\'this.value=this.checked.toString()\'> Habilitar Multibanco</label>"
+                                    } else {
+                                        return "<input name=\'value\' value=\'false\' type=\'hidden\'><span style=\'color:#888\'>Multibanco disponível apenas para PTF</span>"
+                                    }
+                                ''']
+                            ]
                         ],
-                        [$class: 'TextParameterDefinition',
+                        [$class: 'DynamicReferenceParameter',
+                            choiceType: 'ET_FORMATTED_HTML',
+                            description: 'Lista de bancos filiais (blocos separados por ---). Visível apenas quando Multibanco está habilitado.',
                             name: 'BANCOS_FILIAIS',
-                            defaultValue: '',
-                            description: '''Lista de bancos filiais para ambiente multibanco.
-Cada banco é um bloco separado por --- com os mesmos campos de DADOS_AMBIENTE + nome_banco.
-Campos obrigatórios por bloco: nome_banco, CNPJ, Razao Social, Endereço, Bairro, Cidade, Estado, CEP, Lat, Long.
-Exemplo:
-nome_banco: ptf_magnus_sp
+                            omitValueField: false,
+                            referencedParameters: 'MULTIBANCO',
+                            script: [
+                                $class: 'GroovyScript',
+                                fallbackScript: [classpath: [], sandbox: true, script: 'return "<input name=\'value\' value=\'\' type=\'hidden\'>"'],
+                                script: [classpath: [], sandbox: true, script: '''
+                                    if (MULTIBANCO == "true") {
+                                        return """<textarea name=\'value\' rows=\'20\' style=\'width:100%;font-family:monospace\' placeholder=\'nome_banco: ptf_magnus_sp
 CNPJ: 13689432000282
 Razao Social: MAGNUS - FILIAL SP
-Endereço: Rua das Flores, 100
+Endereco: Rua das Flores, 100
 Bairro: Centro
-Cidade: São Paulo
+Cidade: Sao Paulo
 Estado: SP
 CEP: 01310-100
 Lat: -23.55
@@ -63,13 +80,18 @@ Long: -46.63
 nome_banco: ptf_magnus_rj
 CNPJ: 13689432000363
 Razao Social: MAGNUS - FILIAL RJ
-Endereço: Av. Rio Branco, 50
+Endereco: Av. Rio Branco, 50
 Bairro: Centro
 Cidade: Rio de Janeiro
 Estado: RJ
 CEP: 20040-020
 Lat: -22.90
-Long: -43.17'''
+Long: -43.17\'></textarea>"""
+                                    } else {
+                                        return "<input name=\'value\' value=\'\' type=\'hidden\'>"
+                                    }
+                                ''']
+                            ]
                         ],
                         [$class: 'CascadeChoiceParameter',
                             choiceType: 'PT_SINGLE_SELECT',
