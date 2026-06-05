@@ -291,6 +291,7 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                     }
                     
                     def versaoBanco = params.VERSAO_BANCO?.trim()?.replaceAll('[,;\\s]', '')
+                    env.VERSAO_BANCO_CLEAN = versaoBanco
                     def versaoAppParam = params.VERSAO_APP?.trim()
                     
                     // Definir nome customizado para o build
@@ -672,7 +673,7 @@ echo "================================="
     --tipo-ambiente "${params.TIPO_AMBIENTE.toLowerCase()}" \\
     --servidor "${params.SERVIDOR}" \\
     --nome-banco "${params.NOME_BANCO}" \\
-    --versao-banco "${params.VERSAO_BANCO}" \\
+    --versao-banco "${env.VERSAO_BANCO_CLEAN}" \\
     --db-host "${env.DB_HOST}" \\
     --db-internal-host "${env.DB_INTERNAL_HOST}" \\
     --db-port "${env.DB_PORT}" \\
