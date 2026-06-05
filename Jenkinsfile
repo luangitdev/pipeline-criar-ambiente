@@ -46,9 +46,30 @@ pipeline {
                             name: 'BANCOS_FILIAIS',
                             defaultValue: '',
                             description: '''Lista de bancos filiais para ambiente multibanco.
-Formato por linha: nome_banco:empresa_cnpj:empresa_nome
+Cada banco é um bloco separado por --- com os mesmos campos de DADOS_AMBIENTE + nome_banco.
+Campos obrigatórios por bloco: nome_banco, CNPJ, Razao Social, Endereço, Bairro, Cidade, Estado, CEP, Lat, Long.
 Exemplo:
-ptf_magnus_sp_filial:13689432000282:MAGNUS - FILIAL 1'''
+nome_banco: ptf_magnus_sp
+CNPJ: 13689432000282
+Razao Social: MAGNUS - FILIAL SP
+Endereço: Rua das Flores, 100
+Bairro: Centro
+Cidade: São Paulo
+Estado: SP
+CEP: 01310-100
+Lat: -23.55
+Long: -46.63
+---
+nome_banco: ptf_magnus_rj
+CNPJ: 13689432000363
+Razao Social: MAGNUS - FILIAL RJ
+Endereço: Av. Rio Branco, 50
+Bairro: Centro
+Cidade: Rio de Janeiro
+Estado: RJ
+CEP: 20040-020
+Lat: -22.90
+Long: -43.17'''
                         ],
                         [$class: 'CascadeChoiceParameter',
                             choiceType: 'PT_SINGLE_SELECT',
@@ -295,17 +316,37 @@ ptf_magnus_sp_filial:13689432000282:MAGNUS - FILIAL 1'''
                             error("❌ BANCOS_FILIAIS é obrigatório quando MULTIBANCO=true.")
                         }
 
-                        def linhas = params.BANCOS_FILIAIS.split('\n').findAll { it.trim() }
+                        // Separar blocos por linhas contendo apenas ---
+                        def blocos = params.BANCOS_FILIAIS.split(/(?m)^---\s*$/).findAll { it.trim() }
+                        if (blocos.isEmpty()) {
+                            error("❌ BANCOS_FILIAIS não contém nenhum bloco válido. Separe os blocos com linhas contendo apenas ---")
+                        }
+
                         def nomesUsados = []
-
-                        for (def linha : linhas) {
-                            def partes = linha.trim().split(':', 3)
-                            if (partes.size() != 3 || !partes[0].trim() || !partes[1].trim() || !partes[2].trim()) {
-                                error("❌ Formato inválido em '${linha}'. Use: nome_banco:empresa_cnpj:empresa_nome")
+                        for (def bloco : blocos) {
+                            def campos = [:]
+                            bloco.split('\n').findAll { it.trim() }.each { linha ->
+                                def idx = linha.indexOf(':')
+                                if (idx > 0) {
+                                    def chave = linha.substring(0, idx).trim().toLowerCase()
+                                    def valor = linha.substring(idx + 1).trim()
+                                    campos[chave] = valor
+                                }
                             }
-                            def nomeBanco = partes[0].trim()
-                            def cnpj = partes[1].trim()
 
+                            def nomeBanco = campos['nome_banco']
+                            def cnpj = campos['cnpj']?.replaceAll(/[^0-9]/, '')
+                            def razaoSocial = campos['razao social']
+
+                            if (!nomeBanco) {
+                                error("❌ Campo 'nome_banco' obrigatório não encontrado em um bloco de BANCOS_FILIAIS.")
+                            }
+                            if (!cnpj) {
+                                error("❌ Campo 'CNPJ' obrigatório não encontrado no bloco de '${nomeBanco}'.")
+                            }
+                            if (!razaoSocial) {
+                                error("❌ Campo 'Razao Social' obrigatório não encontrado no bloco de '${nomeBanco}'.")
+                            }
                             if (nomeBanco == params.NOME_BANCO) {
                                 error("❌ O nome do banco filial '${nomeBanco}' não pode ser igual ao NOME_BANCO principal.")
                             }

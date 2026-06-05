@@ -135,13 +135,14 @@ run_psql_safe() {
 }
 
 # Aplica start.sql, config.sql, updates e credentials em um banco.
-# Uso: configure_db <nome_banco> <versao_inicial>
+# Uso: configure_db <nome_banco> <versao_inicial> [dados_file]
 configure_db() {
     local target_db="$1"
     local versao_inicial="$2"
+    local local_dados_file="${3:-$DADOS_FILE}"
 
     # Gerar start.sql personalizado
-    "$WORKSPACE/scripts/generate_start_sql.sh" "$DADOS_FILE" "$TIPO_AMBIENTE" "$WORKSPACE/temp"
+    "$WORKSPACE/scripts/generate_start_sql.sh" "$local_dados_file" "$TIPO_AMBIENTE" "$WORKSPACE/temp"
 
     local START_SQL="$WORKSPACE/temp/start_${TIPO_AMBIENTE}.sql"
     if [[ -f "$START_SQL" ]]; then
@@ -411,9 +412,9 @@ if [[ "$MULTIBANCO" == "true" ]]; then
         exit 1
     fi
 
-    # Extrair CNPJ e Razão Social da base principal (matriz) a partir do dados.txt
-    MATRIZ_CNPJ=$(grep -i '^CNPJ:' "$DADOS_FILE" | head -1 | cut -d':' -f2- | tr -cd '0-9' || echo "")
-    MATRIZ_RAZAO=$(grep -i '^Razao Social:' "$DADOS_FILE" | head -1 | sed 's/^[Rr]azao [Ss]ocial:[[:space:]]*//' | xargs || echo "")
+    # Extrair CNPJ e Razão Social da base principal (matriz)
+    MATRIZ_CNPJ=$(grep -i '^CNPJ:' "$DADOS_FILE" | head -1 | cut -d':' -f2- | tr -cd '0-9')
+    MATRIZ_RAZAO=$(grep -i '^Razao Social:' "$DADOS_FILE" | head -1 | sed 's/^[Rr]azao [Ss]ocial:[[:space:]]*//' | xargs)
 
     if [[ -z "$MATRIZ_CNPJ" ]]; then
         log_error "[MULTIBANCO] CNPJ da matriz não encontrado em '$DADOS_FILE'"
@@ -421,71 +422,108 @@ if [[ "$MULTIBANCO" == "true" ]]; then
     fi
     log "[MULTIBANCO] Matriz → CNPJ=$MATRIZ_CNPJ | Nome=$MATRIZ_RAZAO"
 
-    # IP efetivo para db_url (usar IP interno se disponível)
     JDBC_HOST="${DB_INTERNAL_HOST:-$DB_HOST}"
 
-    # Criar banco filial + registro multi_db_connection
-    create_filial() {
-        local filial_nome="$1"
-        local filial_cnpj="$2"
-        local filial_empresa="$3"
+    # Arrays para acumular dados das filiais (usados depois na multi_db_connection)
+    declare -a FILIAIS_NOMES=()
+    declare -a FILIAIS_CNPJS=()
+    declare -a FILIAIS_RAZOES=()
 
-        log "[MULTIBANCO] ── Criando filial '$filial_nome' (CNPJ=$filial_cnpj)..."
+    # Processa um bloco de texto representando uma filial
+    process_filial_block() {
+        local block="$1"
+        local f_nome="" f_cnpj="" f_razao=""
+
+        while IFS= read -r linha; do
+            [[ -z "${linha// }" ]] && continue
+            local key val key_lower
+            key="${linha%%:*}"
+            val="${linha#*:}"
+            val="${val# }"
+            key_lower=$(echo "$key" | tr '[:upper:]' '[:lower:]' | sed 's/ã/a/g; s/ç/c/g' | xargs | tr ' ' '_')
+            case "$key_lower" in
+                "nome_banco")   f_nome="$val" ;;
+                "cnpj")         f_cnpj="$(echo "$val" | tr -cd '0-9')" ;;
+                "razao_social") f_razao="$val" ;;
+            esac
+        done <<< "$block"
+
+        if [[ -z "$f_nome" || -z "$f_cnpj" || -z "$f_razao" ]]; then
+            log_error "[MULTIBANCO] Bloco inválido — nome_banco, CNPJ ou Razao Social ausente"
+            return 1
+        fi
+
+        # Escrever bloco como arquivo de dados para generate_start_sql.sh
+        # (nome_banco é ignorado pelo script pois não é uma chave reconhecida)
+        local filial_dados
+        filial_dados="/tmp/dados_filial_${f_nome}_$$.txt"
+        printf '%s\n' "$block" > "$filial_dados"
+
+        log "[MULTIBANCO] ── Criando filial '$f_nome' (CNPJ=$f_cnpj)..."
 
         # Verificar existência
         local DB_EXISTS
-        DB_EXISTS=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -tAc \
-            "SELECT 1 FROM pg_database WHERE datname = '$filial_nome';" 2>/dev/null || echo "")
+        DB_EXISTS=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" \
+            -d "$TEMPLATE_DB" -tAc "SELECT 1 FROM pg_database WHERE datname = '$f_nome';" 2>/dev/null || echo "")
 
         if [[ "$DB_EXISTS" == "1" ]]; then
             if [[ "$ALLOW_EXISTING_DB" == "true" ]]; then
-                log_warning "[MULTIBANCO] Banco '$filial_nome' já existe; continuando sem recriar (ALLOW_EXISTING_DB=true)."
+                log_warning "[MULTIBANCO] Banco '$f_nome' já existe; continuando sem recriar."
             else
-                log_error "[MULTIBANCO] Banco '$filial_nome' já existe. Use ALLOW_EXISTING_DB=true para ignorar."
+                log_error "[MULTIBANCO] Banco '$f_nome' já existe. Use ALLOW_EXISTING_DB=true para ignorar."
+                rm -f "$filial_dados"
                 return 1
             fi
         else
-            # Criar banco vazio
             run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" \
-                -c "CREATE DATABASE \"$filial_nome\";" || { log_error "[MULTIBANCO] Falha ao criar banco '$filial_nome'"; return 1; }
+                -c "CREATE DATABASE \"$f_nome\";" \
+                || { log_error "[MULTIBANCO] Falha ao criar banco '$f_nome'"; rm -f "$filial_dados"; return 1; }
 
-            # pg_dump/pg_restore do template
             local DUMP_FILE="/tmp/template_dump_filial_$$.sql"
-            log "[MULTIBANCO] 📤 Dump do template para '$filial_nome'..."
+            log "[MULTIBANCO] 📤 Dump do template..."
             if ! run_psql_safe pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
                 log_error "[MULTIBANCO] Falha no dump do template"
-                rm -f "$DUMP_FILE"
+                rm -f "$DUMP_FILE" "$filial_dados"
                 return 1
             fi
-            log "[MULTIBANCO] 📥 Restore em '$filial_nome'..."
-            if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$filial_nome" < "$DUMP_FILE"; then
-                log_error "[MULTIBANCO] Falha no restore em '$filial_nome'"
-                rm -f "$DUMP_FILE"
+            log "[MULTIBANCO] 📥 Restore em '$f_nome'..."
+            if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$f_nome" < "$DUMP_FILE"; then
+                log_error "[MULTIBANCO] Falha no restore em '$f_nome'"
+                rm -f "$DUMP_FILE" "$filial_dados"
                 return 1
             fi
             rm -f "$DUMP_FILE"
-            log_success "[MULTIBANCO] Banco '$filial_nome' criado com dados do template."
+            log_success "[MULTIBANCO] Banco '$f_nome' criado com dados do template."
         fi
 
-        # Configurar (start.sql, config.sql, updates, credentials)
-        configure_db "$filial_nome" "$VERSAO_BASE_INICIAL"
-        log_success "[MULTIBANCO] Filial '$filial_nome' configurada."
+        configure_db "$f_nome" "$VERSAO_BASE_INICIAL" "$filial_dados"
+        rm -f "$filial_dados"
+
+        FILIAIS_NOMES+=("$f_nome")
+        FILIAIS_CNPJS+=("$f_cnpj")
+        FILIAIS_RAZOES+=("$f_razao")
+        log_success "[MULTIBANCO] Filial '$f_nome' criada e configurada."
     }
 
-    # Iterar sobre filiais
+    # Parsear blocos separados por linhas contendo apenas ---
+    current_block=""
     while IFS= read -r linha || [[ -n "$linha" ]]; do
-        linha="${linha//[$'\r']}"
-        [[ -z "${linha// }" ]] && continue
-        IFS=':' read -r f_nome f_cnpj f_empresa <<< "$linha"
-        # Capturar resto após segundo : como nome da empresa (suporte a : no nome)
-        f_nome="${f_nome// }"
-        f_cnpj="${f_cnpj// }"
-        # f_empresa pode conter os : restantes — já capturado corretamente pelo read com 3 vars
-        f_empresa=$(echo "$linha" | cut -d':' -f3-)
-        create_filial "$f_nome" "$f_cnpj" "$f_empresa"
+        linha="${linha//$'\r'}"
+        if [[ "$linha" =~ ^[[:space:]]*---[[:space:]]*$ ]]; then
+            if [[ -n "${current_block// }" ]]; then
+                process_filial_block "$current_block"
+            fi
+            current_block=""
+        else
+            current_block+="$linha"$'\n'
+        fi
     done < "$BANCOS_FILIAIS_FILE"
+    # Último bloco (sem --- final)
+    if [[ -n "${current_block// }" ]]; then
+        process_filial_block "$current_block"
+    fi
 
-    # Registrar todas as bases (principal + filiais) na multi_db_connection da base principal
+    # Registrar conexões na multi_db_connection da base principal
     log "[MULTIBANCO] 📝 Registrando conexões na multi_db_connection de '$NOME_BANCO'..."
 
     insert_multi_db() {
@@ -493,33 +531,26 @@ if [[ "$MULTIBANCO" == "true" ]]; then
         local empresa_cnpj="$2"
         local empresa_nome="$3"
         local db_url="${JDBC_HOST}:${DB_PORT}/${db_name}"
-
-        # Escapar aspas simples no nome da empresa para segurança SQL
         local empresa_nome_escaped="${empresa_nome//\'/\'\'}"
+        local db_password_plain db_password_escaped
+        db_password_plain=$(echo "$DB_PASSWORD_ENCODED" | base64 -d)
+        db_password_escaped="${db_password_plain//\'/\'\'}"
 
         local sql="INSERT INTO multi_db_connection (db_url, db_user, db_password, empresa_cnpj, empresa_nome)
-VALUES ('${db_url}', '${DB_USER}', '$(echo "$DB_PASSWORD_ENCODED" | base64 -d | sed "s/'/\\''/g")', '${empresa_cnpj}', '${empresa_nome_escaped}')
+VALUES ('${db_url}', '${DB_USER}', '${db_password_escaped}', '${empresa_cnpj}', '${empresa_nome_escaped}')
 ON CONFLICT DO NOTHING;"
 
         if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -c "$sql"; then
             log_warning "[MULTIBANCO] Falha ao inserir '$db_name' na multi_db_connection. Verifique manualmente."
         else
-            log_success "[MULTIBANCO] Conexão '$db_name' registrada na multi_db_connection."
+            log_success "[MULTIBANCO] Conexão '$db_name' registrada."
         fi
     }
 
-    # Inserir matriz
     insert_multi_db "$NOME_BANCO" "$MATRIZ_CNPJ" "$MATRIZ_RAZAO"
-
-    # Inserir filiais
-    while IFS= read -r linha || [[ -n "$linha" ]]; do
-        linha="${linha//[$'\r']}"
-        [[ -z "${linha// }" ]] && continue
-        f_nome=$(echo "$linha" | cut -d':' -f1)
-        f_cnpj=$(echo "$linha" | cut -d':' -f2)
-        f_empresa=$(echo "$linha" | cut -d':' -f3-)
-        insert_multi_db "$f_nome" "$f_cnpj" "$f_empresa"
-    done < "$BANCOS_FILIAIS_FILE"
+    for i in "${!FILIAIS_NOMES[@]}"; do
+        insert_multi_db "${FILIAIS_NOMES[$i]}" "${FILIAIS_CNPJS[$i]}" "${FILIAIS_RAZOES[$i]}"
+    done
 
     log_success "[MULTIBANCO] Todas as conexões registradas em '$NOME_BANCO'."
 fi
