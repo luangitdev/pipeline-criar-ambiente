@@ -18,6 +18,8 @@ DB_INTERNAL_HOST=""
 DB_PORT="5432"
 DB_USER=""
 DB_PASSWORD=""
+TEMPLATE_DB_USER=""
+TEMPLATE_DB_PASSWORD=""
 WORKSPACE=""
 UPDATES_DIR_OVERRIDE=""
 ALLOW_EXISTING_DB="${ALLOW_EXISTING_DB:-false}"
@@ -77,6 +79,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         --bancos-filiais-file)
             BANCOS_FILIAIS_FILE="$2"
+            shift 2
+            ;;
+        --template-db-user)
+            TEMPLATE_DB_USER="$2"
+            shift 2
+            ;;
+        --template-db-password)
+            TEMPLATE_DB_PASSWORD="$2"
             shift 2
             ;;
         *)
@@ -284,12 +294,15 @@ EFFECTIVE_PORT="$DB_PORT"
 # Inicializar variável de túnel SSH (mesmo que não usado)
 TUNNEL_PID=""
 
-# Template baseado no tipo de ambiente
-if [[ "$TIPO_AMBIENTE" == "pln" ]]; then
-    TEMPLATE_HOST="10.200.0.3"    # GCP-PLN
+# Template: OCI usa OCI-DB-IMP, GCP usa GCP01 (PTF) ou GCP-PLN (PLN)
+if [[ "$SERVIDOR" == oci-* ]]; then
+    TEMPLATE_HOST="204.216.191.1"  # OCI-DB-IMP
+    TEMPLATE_SERVER_NAME="OCI-DB-IMP"
+elif [[ "$TIPO_AMBIENTE" == "pln" ]]; then
+    TEMPLATE_HOST="10.200.0.3"     # GCP-PLN
     TEMPLATE_SERVER_NAME="GCP-PLN"
 else
-    TEMPLATE_HOST="10.200.0.19"   # GCP01 (PTF padrão)
+    TEMPLATE_HOST="10.200.0.19"    # GCP01
     TEMPLATE_SERVER_NAME="GCP01"
 fi
 TEMPLATE_PORT="5432"
@@ -318,7 +331,6 @@ log_success "Conexão com o servidor estabelecida com sucesso!"
 
 # 2. Verificar se template existe no servidor de template
 log "🔍 Verificando se template existe no $TEMPLATE_SERVER_NAME: $TEMPLATE_DB"
-# Conectar no próprio template para verificar se existe e se temos acesso
 if ! run_psql_safe psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
     log_error "Template '$TEMPLATE_DB' não encontrado ou sem acesso em $TEMPLATE_HOST:$TEMPLATE_PORT ($TEMPLATE_SERVER_NAME, usuário: $DB_USER)"
     exit 1
