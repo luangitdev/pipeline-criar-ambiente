@@ -14,12 +14,15 @@ SERVIDOR=""
 NOME_BANCO=""
 VERSAO_BANCO=""
 DB_HOST=""
+DB_INTERNAL_HOST=""
 DB_PORT="5432"
 DB_USER=""
 DB_PASSWORD=""
 WORKSPACE=""
 UPDATES_DIR_OVERRIDE=""
 ALLOW_EXISTING_DB="${ALLOW_EXISTING_DB:-false}"
+MULTIBANCO="false"
+BANCOS_FILIAIS_FILE=""
 
 # Parse de argumentos
 while [[ $# -gt 0 ]]; do
@@ -62,6 +65,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --updates-dir)
             UPDATES_DIR_OVERRIDE="$2"
+            shift 2
+            ;;
+        --db-internal-host)
+            DB_INTERNAL_HOST="$2"
+            shift 2
+            ;;
+        --multibanco)
+            MULTIBANCO="$2"
+            shift 2
+            ;;
+        --bancos-filiais-file)
+            BANCOS_FILIAIS_FILE="$2"
             shift 2
             ;;
         *)
@@ -117,6 +132,97 @@ extract_version_token() {
 run_psql_safe() {
     local password_decoded=$(echo "$DB_PASSWORD_ENCODED" | base64 -d)
     PGPASSWORD="$password_decoded" "$@"
+}
+
+# Aplica start.sql, config.sql, updates e credentials em um banco.
+# Uso: configure_db <nome_banco> <versao_inicial>
+configure_db() {
+    local target_db="$1"
+    local versao_inicial="$2"
+
+    # Gerar start.sql personalizado
+    "$WORKSPACE/scripts/generate_start_sql.sh" "$DADOS_FILE" "$TIPO_AMBIENTE" "$WORKSPACE/temp"
+
+    local START_SQL="$WORKSPACE/temp/start_${TIPO_AMBIENTE}.sql"
+    if [[ -f "$START_SQL" ]]; then
+        log "🔧 Executando configuração inicial em '$target_db'..."
+        if execute_sql_file "$START_SQL" "$target_db"; then
+            log_success "Configuração inicial aplicada"
+        else
+            log_error "Falha ao aplicar configuração inicial"
+            return 1
+        fi
+    else
+        log_warning "Arquivo start.sql não encontrado: $START_SQL"
+        log "🔍 Listando conteúdo de temp/:"
+        ls -la "$WORKSPACE/temp/" || log_warning "Diretório temp não existe"
+    fi
+
+    local CONFIG_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/config.sql"
+    if [[ -f "$CONFIG_SQL" && "$TIPO_AMBIENTE" != "pln" ]]; then
+        log "⚙️ Executando scripts de configuração em '$target_db'..."
+        if execute_sql_file "$CONFIG_SQL" "$target_db"; then
+            log_success "Scripts de configuração aplicados"
+        else
+            log_error "Falha ao aplicar configuração"
+            return 1
+        fi
+    fi
+
+    log "🔄 Executando updates necessários em '$target_db' ($versao_inicial → $VERSAO_BANCO)..."
+    local UPDATES_DIR="${UPDATES_DIR_OVERRIDE:-$WORKSPACE/sql/$TIPO_AMBIENTE/updates}"
+    local UPDATE_COUNT=0
+    if [[ -d "$UPDATES_DIR" ]]; then
+        local sorted_updates=()
+        mapfile -t sorted_updates < <(find "$UPDATES_DIR" -maxdepth 1 -type f -name "*.sql" | sort -V)
+        local eligible_update_files=()
+
+        for update_file in "${sorted_updates[@]}"; do
+            if [[ -f "$update_file" ]]; then
+                local update_label
+                update_label=$(basename "$update_file" .sql)
+                local update_version
+                if ! update_version=$(extract_version_token "$update_label"); then
+                    log_warning "Pulando arquivo sem versão reconhecida no nome: $update_label"
+                    continue
+                fi
+                local comp_atual comp_desejada
+                comp_atual=$(compare_versions "$update_version" "$versao_inicial")
+                comp_desejada=$(compare_versions "$update_version" "$VERSAO_BANCO")
+                if [[ "$comp_atual" == "1" ]] && [[ "$comp_desejada" == "-1" || "$comp_desejada" == "0" ]]; then
+                    eligible_update_files+=("$update_file")
+                fi
+            fi
+        done
+
+        for update_file in "${eligible_update_files[@]}"; do
+            local update_label
+            update_label=$(basename "$update_file" .sql)
+            local update_version
+            update_version=$(extract_version_token "$update_label" || echo "$update_label")
+            log "🔄 Aplicando update: $update_label [versão: $update_version]"
+            if execute_sql_file "$update_file" "$target_db"; then
+                ((UPDATE_COUNT++))
+                log_success "Update $update_version aplicado"
+            else
+                log_error "Falha ao aplicar update $update_version"
+                return 1
+            fi
+        done
+        log_success "$UPDATE_COUNT updates aplicados em '$target_db'"
+    else
+        log_warning "Diretório de updates não encontrado: $UPDATES_DIR"
+    fi
+
+    local CREDENTIALS_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/credentials.sql"
+    if [[ -f "$CREDENTIALS_SQL" ]]; then
+        log "🔐 Aplicando credenciais em '$target_db'..."
+        if execute_sql_file "$CREDENTIALS_SQL" "$target_db"; then
+            log_success "Credenciais aplicadas com sucesso"
+        else
+            log_warning "Erro ao aplicar credenciais (pode ser normal se usuários já existem)"
+        fi
+    fi
 }
 
 log "🚀 Criando banco '$NOME_BANCO' [$TIPO_AMBIENTE] em $DB_HOST:$DB_PORT — versão alvo: $VERSAO_BANCO"
@@ -286,121 +392,139 @@ else
     exit 1
 fi
 
-# Gerar start.sql personalizado
-"$WORKSPACE/scripts/generate_start_sql.sh" "$DADOS_FILE" "$TIPO_AMBIENTE" "$WORKSPACE/temp"
-
-# 3. Executar configuração inicial (start.sql)
-START_SQL="$WORKSPACE/temp/start_${TIPO_AMBIENTE}.sql"
-if [[ -f "$START_SQL" ]]; then
-    log "🔧 Executando configuração inicial..."
-    if execute_sql_file "$START_SQL" "$NOME_BANCO"; then
-        log_success "Configuração inicial aplicada"
-    else
-        log_error "Falha ao aplicar configuração inicial"
-        exit 1
-    fi
-else
-    log_warning "Arquivo start.sql não encontrado: $START_SQL"
-    log "🔍 Listando conteúdo de temp/:"
-    ls -la "$WORKSPACE/temp/" || log_warning "Diretório temp não existe"
-fi
-
-# 4. Executar scripts de configuração (config.sql)
-CONFIG_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/config.sql"
-if [[ -f "$CONFIG_SQL" && "$TIPO_AMBIENTE" != "pln" ]]; then
-    log "⚙️ Executando scripts de configuração..."
-    if execute_sql_file "$CONFIG_SQL" "$NOME_BANCO"; then
-        log_success "Scripts de configuração aplicados"
-    else
-        log_error "Falha ao aplicar configuração"
-        exit 1
-    fi
-else
-    if [[ "$TIPO_AMBIENTE" == "pln" ]]; then
-        log "ℹ️ Config.sql ignorado para ambiente PLN"
-    else
-        log_warning "Arquivo config.sql não encontrado: $CONFIG_SQL"
-    fi
-fi
-
-# 5. Definir versão base inicial por ambiente (sem consulta ao banco)
+# Versão base inicial por ambiente (sem consulta ao banco)
 if [[ "$TIPO_AMBIENTE" == "ptf" ]]; then
-    VERSAO_ATUAL="15.12.0.3-43"
+    VERSAO_BASE_INICIAL="15.12.0.3-43"
 else
-    VERSAO_ATUAL="9.0.0.0-0"
+    VERSAO_BASE_INICIAL="9.0.0.0-0"
 fi
 
-# 6. Executar updates necessários
-log "🔄 Executando updates necessários ($VERSAO_ATUAL → $VERSAO_BANCO)..."
-UPDATES_DIR="${UPDATES_DIR_OVERRIDE:-$WORKSPACE/sql/$TIPO_AMBIENTE/updates}"
-if [[ -d "$UPDATES_DIR" ]]; then
-    UPDATE_COUNT=0
-    mapfile -t sorted_updates < <(find "$UPDATES_DIR" -maxdepth 1 -type f -name "*.sql" | sort -V)
+# 3-7. Configurar base principal
+configure_db "$NOME_BANCO" "$VERSAO_BASE_INICIAL"
 
-    eligible_update_files=()
+# ==================== MULTIBANCO ====================
+if [[ "$MULTIBANCO" == "true" ]]; then
+    log "[MULTIBANCO] 🔀 Iniciando criação de bases filiais..."
 
-    for update_file in "${sorted_updates[@]}"; do
-        if [[ -f "$update_file" ]]; then
-            update_label=$(basename "$update_file" .sql)
-            if ! update_version=$(extract_version_token "$update_label"); then
-                log_warning "Pulando arquivo sem versão reconhecida no nome: $update_label"
-                continue
-            fi
-            
-            # Verificar se update deve ser aplicado usando comparação numérica de versões
-            # Condição: versão do update > versão atual E versão do update <= versão desejada
-            comp_atual=$(compare_versions "$update_version" "$VERSAO_ATUAL")
-            comp_desejada=$(compare_versions "$update_version" "$VERSAO_BANCO")
-            
-            # update_version > VERSAO_ATUAL AND update_version <= VERSAO_BANCO
-            if [[ "$comp_atual" == "1" ]] && [[ "$comp_desejada" == "-1" || "$comp_desejada" == "0" ]]; then
-                eligible_update_files+=("$update_file")
+    if [[ -z "$BANCOS_FILIAIS_FILE" || ! -f "$BANCOS_FILIAIS_FILE" ]]; then
+        log_error "[MULTIBANCO] Arquivo de bancos filiais não encontrado: '${BANCOS_FILIAIS_FILE}'"
+        exit 1
+    fi
+
+    # Extrair CNPJ e Razão Social da base principal (matriz) a partir do dados.txt
+    MATRIZ_CNPJ=$(grep -i '^CNPJ:' "$DADOS_FILE" | head -1 | cut -d':' -f2- | tr -cd '0-9' || echo "")
+    MATRIZ_RAZAO=$(grep -i '^Razao Social:' "$DADOS_FILE" | head -1 | sed 's/^[Rr]azao [Ss]ocial:[[:space:]]*//' | xargs || echo "")
+
+    if [[ -z "$MATRIZ_CNPJ" ]]; then
+        log_error "[MULTIBANCO] CNPJ da matriz não encontrado em '$DADOS_FILE'"
+        exit 1
+    fi
+    log "[MULTIBANCO] Matriz → CNPJ=$MATRIZ_CNPJ | Nome=$MATRIZ_RAZAO"
+
+    # IP efetivo para db_url (usar IP interno se disponível)
+    JDBC_HOST="${DB_INTERNAL_HOST:-$DB_HOST}"
+
+    # Criar banco filial + registro multi_db_connection
+    create_filial() {
+        local filial_nome="$1"
+        local filial_cnpj="$2"
+        local filial_empresa="$3"
+
+        log "[MULTIBANCO] ── Criando filial '$filial_nome' (CNPJ=$filial_cnpj)..."
+
+        # Verificar existência
+        local DB_EXISTS
+        DB_EXISTS=$(run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -tAc \
+            "SELECT 1 FROM pg_database WHERE datname = '$filial_nome';" 2>/dev/null || echo "")
+
+        if [[ "$DB_EXISTS" == "1" ]]; then
+            if [[ "$ALLOW_EXISTING_DB" == "true" ]]; then
+                log_warning "[MULTIBANCO] Banco '$filial_nome' já existe; continuando sem recriar (ALLOW_EXISTING_DB=true)."
             else
-                log "⏭️ Pulando update $update_version (fora do intervalo $VERSAO_ATUAL < x <= $VERSAO_BANCO)"
+                log_error "[MULTIBANCO] Banco '$filial_nome' já existe. Use ALLOW_EXISTING_DB=true para ignorar."
+                return 1
             fi
-        fi
-    done
-
-    if [[ "${#eligible_update_files[@]}" -eq 0 ]]; then
-        log_warning "Nenhum update encontrado dentro do intervalo: $VERSAO_ATUAL < x <= $VERSAO_BANCO"
-    else
-        log "📌 Versões dentro do intervalo ($VERSAO_ATUAL < x <= $VERSAO_BANCO):"
-        for update_file in "${eligible_update_files[@]}"; do
-            update_label=$(basename "$update_file" .sql)
-            update_version=$(extract_version_token "$update_label" || echo "$update_label")
-            log "   - $update_version ($update_label)"
-        done
-    fi
-
-    for update_file in "${eligible_update_files[@]}"; do
-        update_label=$(basename "$update_file" .sql)
-        update_version=$(extract_version_token "$update_label" || echo "$update_label")
-        log "🔄 Aplicando update: $update_label [versão: $update_version] (atual: $VERSAO_ATUAL, desejada: $VERSAO_BANCO)"
-        if execute_sql_file "$update_file" "$NOME_BANCO"; then
-            ((UPDATE_COUNT++))
-            log_success "Update $update_version aplicado"
         else
-            log_error "Falha ao aplicar update $update_version"
-            exit 1
-        fi
-    done
-    
-    log_success "$UPDATE_COUNT updates aplicados"
-else
-    log_warning "Diretório de updates não encontrado: $UPDATES_DIR"
-fi
+            # Criar banco vazio
+            run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" \
+                -c "CREATE DATABASE \"$filial_nome\";" || { log_error "[MULTIBANCO] Falha ao criar banco '$filial_nome'"; return 1; }
 
-# 7. Executar credenciais
-CREDENTIALS_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/credentials.sql"
-if [[ -f "$CREDENTIALS_SQL" ]]; then
-    log "🔐 Aplicando credenciais..."
-    if execute_sql_file "$CREDENTIALS_SQL" "$NOME_BANCO"; then
-        log_success "Credenciais aplicadas com sucesso"
-    else
-        log_warning "Erro ao aplicar credenciais (pode ser normal se usuários já existem)"
-    fi
+            # pg_dump/pg_restore do template
+            local DUMP_FILE="/tmp/template_dump_filial_$$.sql"
+            log "[MULTIBANCO] 📤 Dump do template para '$filial_nome'..."
+            if ! run_psql_safe pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
+                log_error "[MULTIBANCO] Falha no dump do template"
+                rm -f "$DUMP_FILE"
+                return 1
+            fi
+            log "[MULTIBANCO] 📥 Restore em '$filial_nome'..."
+            if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$filial_nome" < "$DUMP_FILE"; then
+                log_error "[MULTIBANCO] Falha no restore em '$filial_nome'"
+                rm -f "$DUMP_FILE"
+                return 1
+            fi
+            rm -f "$DUMP_FILE"
+            log_success "[MULTIBANCO] Banco '$filial_nome' criado com dados do template."
+        fi
+
+        # Configurar (start.sql, config.sql, updates, credentials)
+        configure_db "$filial_nome" "$VERSAO_BASE_INICIAL"
+        log_success "[MULTIBANCO] Filial '$filial_nome' configurada."
+    }
+
+    # Iterar sobre filiais
+    while IFS= read -r linha || [[ -n "$linha" ]]; do
+        linha="${linha//[$'\r']}"
+        [[ -z "${linha// }" ]] && continue
+        IFS=':' read -r f_nome f_cnpj f_empresa <<< "$linha"
+        # Capturar resto após segundo : como nome da empresa (suporte a : no nome)
+        f_nome="${f_nome// }"
+        f_cnpj="${f_cnpj// }"
+        # f_empresa pode conter os : restantes — já capturado corretamente pelo read com 3 vars
+        f_empresa=$(echo "$linha" | cut -d':' -f3-)
+        create_filial "$f_nome" "$f_cnpj" "$f_empresa"
+    done < "$BANCOS_FILIAIS_FILE"
+
+    # Registrar todas as bases (principal + filiais) na multi_db_connection da base principal
+    log "[MULTIBANCO] 📝 Registrando conexões na multi_db_connection de '$NOME_BANCO'..."
+
+    insert_multi_db() {
+        local db_name="$1"
+        local empresa_cnpj="$2"
+        local empresa_nome="$3"
+        local db_url="${JDBC_HOST}:${DB_PORT}/${db_name}"
+
+        # Escapar aspas simples no nome da empresa para segurança SQL
+        local empresa_nome_escaped="${empresa_nome//\'/\'\'}"
+
+        local sql="INSERT INTO multi_db_connection (db_url, db_user, db_password, empresa_cnpj, empresa_nome)
+VALUES ('${db_url}', '${DB_USER}', '$(echo "$DB_PASSWORD_ENCODED" | base64 -d | sed "s/'/\\''/g")', '${empresa_cnpj}', '${empresa_nome_escaped}')
+ON CONFLICT DO NOTHING;"
+
+        if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -c "$sql"; then
+            log_warning "[MULTIBANCO] Falha ao inserir '$db_name' na multi_db_connection. Verifique manualmente."
+        else
+            log_success "[MULTIBANCO] Conexão '$db_name' registrada na multi_db_connection."
+        fi
+    }
+
+    # Inserir matriz
+    insert_multi_db "$NOME_BANCO" "$MATRIZ_CNPJ" "$MATRIZ_RAZAO"
+
+    # Inserir filiais
+    while IFS= read -r linha || [[ -n "$linha" ]]; do
+        linha="${linha//[$'\r']}"
+        [[ -z "${linha// }" ]] && continue
+        f_nome=$(echo "$linha" | cut -d':' -f1)
+        f_cnpj=$(echo "$linha" | cut -d':' -f2)
+        f_empresa=$(echo "$linha" | cut -d':' -f3-)
+        insert_multi_db "$f_nome" "$f_cnpj" "$f_empresa"
+    done < "$BANCOS_FILIAIS_FILE"
+
+    log_success "[MULTIBANCO] Todas as conexões registradas em '$NOME_BANCO'."
 fi
+# ====================================================
 
 # Conexão finalizada
 
-log_success "Banco '$NOME_BANCO' criado — versão: $VERSAO_BANCO ($UPDATE_COUNT updates aplicados)"
+log_success "Banco '$NOME_BANCO' criado — versão: $VERSAO_BANCO"

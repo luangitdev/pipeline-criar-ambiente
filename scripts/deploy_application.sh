@@ -39,6 +39,7 @@ APP_NAME=""
 SSH_KEY_FILE=""
 WORKSPACE=""
 SUDO_PASSWORD=""
+MULTIBANCO="false"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -100,6 +101,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --sudo-password)
             SUDO_PASSWORD="$2"
+            shift 2
+            ;;
+        --multibanco)
+            MULTIBANCO="$2"
             shift 2
             ;;
         *)
@@ -208,6 +213,21 @@ else
         else
             log "ℹ️ Mapeamento de idioma desconsiderado para $DEPLOY_SERVER_NAME; valor atual será mantido."
         fi
+    fi
+
+    if [[ "$MULTIBANCO" == "true" ]]; then
+        for file in "${app_prop_files[@]}"; do
+            log "⚙️ Ativando profile multibanco em: $file"
+            if grep -qE '^spring\.profiles\.active=' "$file"; then
+                # Adicionar multibanco ao final da linha existente se ainda não estiver presente
+                if ! grep -qE '^spring\.profiles\.active=.*multibanco' "$file"; then
+                    sed -i 's/^\(spring\.profiles\.active=.*\)$/\1,multibanco/' "$file"
+                fi
+            else
+                echo "spring.profiles.active=pathfind,multibanco" >> "$file"
+            fi
+            log_success "Profile multibanco configurado em: $file"
+        done
     fi
 fi
 

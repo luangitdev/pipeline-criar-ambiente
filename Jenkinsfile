@@ -37,6 +37,19 @@ pipeline {
                             defaultValue: true,
                             description: 'Executar criação do banco de dados'
                         ],
+                        [$class: 'BooleanParameterDefinition',
+                            name: 'MULTIBANCO',
+                            defaultValue: false,
+                            description: 'Habilitar criação de ambiente multibanco (múltiplas bases filiais)'
+                        ],
+                        [$class: 'TextParameterDefinition',
+                            name: 'BANCOS_FILIAIS',
+                            defaultValue: '',
+                            description: '''Lista de bancos filiais para ambiente multibanco.
+Formato por linha: nome_banco:empresa_cnpj:empresa_nome
+Exemplo:
+ptf_magnus_sp_filial:13689432000282:MAGNUS - FILIAL 1'''
+                        ],
                         [$class: 'CascadeChoiceParameter',
                             choiceType: 'PT_SINGLE_SELECT',
                             description: 'Servidor de banco de dados (filtrado por tipo de ambiente)',
@@ -213,6 +226,10 @@ pipeline {
                     echo "   - Versão Banco: ${params.VERSAO_BANCO}"
                     echo "   - Versão App: ${params.VERSAO_APP}"
                     echo "   - Criar Banco: ${params.CRIAR_BANCO}"
+                    echo "   - Multibanco: ${params.MULTIBANCO}"
+                    if (params.MULTIBANCO) {
+                        echo "   - Bancos Filiais: ${params.BANCOS_FILIAIS}"
+                    }
                     echo "   - Deploy App: ${params.DEPLOY_APP}"
                     echo "   - Tomcat Volume: ${params.TOMCAT_VOLUME}"
                     echo "   - App Name: ${params.APP_NAME}"
@@ -271,6 +288,39 @@ pipeline {
 
                     if (params.CRIAR_BANCO && !versaoBanco) {
                         error("❌ VERSAO_BANCO é obrigatória quando CRIAR_BANCO=true.")
+                    }
+
+                    if (params.MULTIBANCO) {
+                        if (!params.BANCOS_FILIAIS || params.BANCOS_FILIAIS.trim() == '') {
+                            error("❌ BANCOS_FILIAIS é obrigatório quando MULTIBANCO=true.")
+                        }
+
+                        def linhas = params.BANCOS_FILIAIS.split('\n').findAll { it.trim() }
+                        def nomesUsados = []
+
+                        for (def linha : linhas) {
+                            def partes = linha.trim().split(':', 3)
+                            if (partes.size() != 3 || !partes[0].trim() || !partes[1].trim() || !partes[2].trim()) {
+                                error("❌ Formato inválido em '${linha}'. Use: nome_banco:empresa_cnpj:empresa_nome")
+                            }
+                            def nomeBanco = partes[0].trim()
+                            def cnpj = partes[1].trim()
+
+                            if (nomeBanco == params.NOME_BANCO) {
+                                error("❌ O nome do banco filial '${nomeBanco}' não pode ser igual ao NOME_BANCO principal.")
+                            }
+                            if (nomesUsados.contains(nomeBanco)) {
+                                error("❌ Nome de banco duplicado: '${nomeBanco}'.")
+                            }
+                            if (!cnpj.matches('[0-9]{14}')) {
+                                error("❌ CNPJ inválido para '${nomeBanco}': '${cnpj}'. Deve conter exatamente 14 dígitos.")
+                            }
+                            if (!nomeBanco.matches('[a-zA-Z0-9_-]+')) {
+                                error("❌ Nome de banco inválido: '${nomeBanco}'. Use apenas letras, números, hífen e underscore.")
+                            }
+                            nomesUsados.add(nomeBanco)
+                        }
+                        echo "✅ Validação multibanco: ${nomesUsados.size()} banco(s) filial(is) válido(s)"
                     }
 
                     if (params.CRIAR_BANCO && params.SINCRONIZAR_UPDATES_INFRA && (!params.INFRA_REPO_CREDENTIALS_ID || params.INFRA_REPO_CREDENTIALS_ID.trim() == '')) {
@@ -403,6 +453,7 @@ pipeline {
                         echo "📄 Conteúdo:"
                         sh "cat ${WORKSPACE}/temp/dados.txt"
                     } else {
+
                         // Usar arquivo padrão se nenhum dado foi fornecido
                         sh """
                             if [ -f "${DADOS_PATH}/${params.TIPO_AMBIENTE}/dados.txt" ]; then
@@ -413,6 +464,12 @@ pipeline {
                                 exit 1
                             fi
                         """
+                    }
+
+                    // Escrever lista de bancos filiais para arquivo (evita problemas com newlines em heredoc SSH)
+                    if (params.MULTIBANCO) {
+                        writeFile file: "${WORKSPACE}/temp/bancos_filiais.txt", text: params.BANCOS_FILIAIS
+                        echo "✅ Bancos filiais registrados em temp/bancos_filiais.txt"
                     }
                 }
             }
@@ -552,11 +609,14 @@ echo "================================="
     --nome-banco "${params.NOME_BANCO}" \\
     --versao-banco "${params.VERSAO_BANCO}" \\
     --db-host "${env.DB_HOST}" \\
+    --db-internal-host "${env.DB_INTERNAL_HOST}" \\
     --db-port "${env.DB_PORT}" \\
     --db-user "${DB_USER}" \\
     --db-password "${DB_PASSWORD}" \\
     --workspace "/tmp/pipeline-${BUILD_NUMBER}" \\
-    --updates-dir "/tmp/pipeline-${BUILD_NUMBER}/temp/sql_updates/${params.TIPO_AMBIENTE.toLowerCase()}/updates"
+    --updates-dir "/tmp/pipeline-${BUILD_NUMBER}/temp/sql_updates/${params.TIPO_AMBIENTE.toLowerCase()}/updates" \\
+    --multibanco "${params.MULTIBANCO}" \\
+    --bancos-filiais-file "/tmp/pipeline-${BUILD_NUMBER}/temp/bancos_filiais.txt"
 
 # Verificar se houve erro na criação
 if [ \$? -ne 0 ]; then
@@ -677,6 +737,7 @@ SUDO_PASSWORD_REMOTE="\$(cat /tmp/pipeline-${BUILD_NUMBER}/.infra_sudo_password)
     --app-name "${params.APP_NAME}" \\
     --ssh-key-file "/tmp/pipeline-${BUILD_NUMBER}/.deploy_ssh_key" \\
     --workspace "/tmp/pipeline-${BUILD_NUMBER}" \\
+    --multibanco "${params.MULTIBANCO}" \\
     --sudo-password "\${SUDO_PASSWORD_REMOTE}"
 
 # Verificar se houve erro no deploy
