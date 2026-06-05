@@ -67,26 +67,26 @@ pipeline {
                                 script: [classpath: [], sandbox: true, script: '''
                                     if (MULTIBANCO == "true") {
                                         return """<textarea name=\'value\' rows=\'20\' style=\'width:100%;font-family:monospace\' placeholder=\'nome_banco: ptf_magnus_sp
-CNPJ: 13689432000282
-Razao Social: MAGNUS - FILIAL SP
-Endereco: Rua das Flores, 100
+Endereço: Rua das Flores, 100
 Bairro: Centro
 Cidade: Sao Paulo
 Estado: SP
 CEP: 01310-100
 Lat: -23.55
 Long: -46.63
+CNPJ: 13689432000282
+Razao Social: MAGNUS - FILIAL SP
 ---
 nome_banco: ptf_magnus_rj
-CNPJ: 13689432000363
-Razao Social: MAGNUS - FILIAL RJ
-Endereco: Av. Rio Branco, 50
+Endereço: Av. Rio Branco, 50
 Bairro: Centro
 Cidade: Rio de Janeiro
 Estado: RJ
 CEP: 20040-020
 Lat: -22.90
-Long: -43.17\'></textarea>"""
+Long: -43.17
+CNPJ: 13689432000363
+Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                                     } else {
                                         return "<input name=\'value\' value=\'\' type=\'hidden\'>"
                                     }
