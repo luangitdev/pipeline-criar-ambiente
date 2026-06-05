@@ -186,9 +186,9 @@ if [[ "${#login_files[@]}" -eq 0 ]]; then
 else
     for file in "${login_files[@]}"; do
         log "⚙️ Atualizando login.properties: $file"
-        local jdbc_host="${DB_INTERNAL_HOST:-$DB_HOST}"
-        local login_user="${DB_USER:-pathfinddb}"
-        local login_password="${DB_PASSWORD:-Find**(path)\$DB}"
+        jdbc_host="${DB_INTERNAL_HOST:-$DB_HOST}"
+        login_user="${DB_USER:-pathfinddb}"
+        login_password="${DB_PASSWORD:-Find**(path)\$DB}"
         upsert_property "$file" "database.serverHost" "${jdbc_host}:5432"
         upsert_property "$file" "database.databaseName" "$NOME_BANCO"
         upsert_property "$file" "database.user" "$login_user"
