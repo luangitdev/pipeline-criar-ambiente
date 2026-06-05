@@ -340,7 +340,8 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                         }
 
                         // Separar blocos por linhas contendo apenas ---
-                        def blocos = params.BANCOS_FILIAIS.split(/(?m)^---\s*$/).findAll { it.trim() }
+                        def bancosFiliais = params.BANCOS_FILIAIS.replace('\\n', '\n')
+                        def blocos = bancosFiliais.split(/(?m)^---\s*$/).findAll { it.trim() }
                         if (blocos.isEmpty()) {
                             error("❌ BANCOS_FILIAIS não contém nenhum bloco válido. Separe os blocos com linhas contendo apenas ---")
                         }
@@ -532,7 +533,7 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
 
                     // Escrever lista de bancos filiais para arquivo (evita problemas com newlines em heredoc SSH)
                     if (params.MULTIBANCO) {
-                        writeFile file: "${WORKSPACE}/temp/bancos_filiais.txt", text: params.BANCOS_FILIAIS
+                        writeFile file: "${WORKSPACE}/temp/bancos_filiais.txt", text: params.BANCOS_FILIAIS.replace('\\n', '\n')
                         echo "✅ Bancos filiais registrados em temp/bancos_filiais.txt"
                     }
                 }
