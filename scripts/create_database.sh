@@ -295,7 +295,8 @@ EFFECTIVE_PORT="$DB_PORT"
 TUNNEL_PID=""
 
 # Template: OCI usa OCI-DB-IMP, GCP usa GCP01 (PTF) ou GCP-PLN (PLN)
-if [[ "$SERVIDOR" == oci-* ]]; then
+SERVIDOR_LOWER="${SERVIDOR,,}"
+if [[ "$SERVIDOR_LOWER" == oci-* ]]; then
     TEMPLATE_HOST="204.216.191.1"  # OCI-DB-IMP
     TEMPLATE_SERVER_NAME="OCI-DB-IMP"
 elif [[ "$TIPO_AMBIENTE" == "pln" ]]; then
