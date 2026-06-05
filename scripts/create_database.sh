@@ -540,9 +540,10 @@ if [[ "$MULTIBANCO" == "true" ]]; then
     log "[MULTIBANCO] 📝 Registrando conexões na multi_db_connection de '$NOME_BANCO'..."
 
     insert_multi_db() {
-        local db_name="$1"
-        local empresa_cnpj="$2"
-        local empresa_nome="$3"
+        local target_db="$1"
+        local db_name="$2"
+        local empresa_cnpj="$3"
+        local empresa_nome="$4"
         local db_url="${JDBC_HOST}:${DB_PORT}/${db_name}"
         local empresa_nome_escaped="${empresa_nome//\'/\'\'}"
         local db_password_plain db_password_escaped
@@ -553,19 +554,26 @@ if [[ "$MULTIBANCO" == "true" ]]; then
 VALUES ('${db_url}', '${DB_USER}', '${db_password_escaped}', '${empresa_cnpj}', '${empresa_nome_escaped}')
 ON CONFLICT DO NOTHING;"
 
-        if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$NOME_BANCO" -c "$sql"; then
-            log_warning "[MULTIBANCO] Falha ao inserir '$db_name' na multi_db_connection. Verifique manualmente."
+        if ! run_psql_safe psql -h "$EFFECTIVE_HOST" -p "$EFFECTIVE_PORT" -U "$DB_USER" -d "$target_db" -c "$sql"; then
+            log_warning "[MULTIBANCO] Falha ao inserir '$db_name' em multi_db_connection de '$target_db'. Verifique manualmente."
         else
-            log_success "[MULTIBANCO] Conexão '$db_name' registrada."
+            log_success "[MULTIBANCO] Conexão '$db_name' registrada em '$target_db'."
         fi
     }
 
-    insert_multi_db "$NOME_BANCO" "$MATRIZ_CNPJ" "$MATRIZ_RAZAO"
-    for i in "${!FILIAIS_NOMES[@]}"; do
-        insert_multi_db "${FILIAIS_NOMES[$i]}" "${FILIAIS_CNPJS[$i]}" "${FILIAIS_RAZOES[$i]}"
+    # Popula multi_db_connection em TODAS as bases com os registros de todas as bases
+    all_dbs=("$NOME_BANCO" "${FILIAIS_NOMES[@]}")
+    all_cnpjs=("$MATRIZ_CNPJ" "${FILIAIS_CNPJS[@]}")
+    all_razoes=("$MATRIZ_RAZAO" "${FILIAIS_RAZOES[@]}")
+
+    for target_db in "${all_dbs[@]}"; do
+        log "[MULTIBANCO] 📝 Registrando conexões na multi_db_connection de '$target_db'..."
+        for i in "${!all_dbs[@]}"; do
+            insert_multi_db "$target_db" "${all_dbs[$i]}" "${all_cnpjs[$i]}" "${all_razoes[$i]}"
+        done
     done
 
-    log_success "[MULTIBANCO] Todas as conexões registradas em '$NOME_BANCO'."
+    log_success "[MULTIBANCO] Todas as conexões registradas em todas as bases."
 fi
 # ====================================================
 
