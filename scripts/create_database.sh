@@ -169,14 +169,34 @@ configure_db() {
         ls -la "$WORKSPACE/temp/" || log_warning "Diretório temp não existe"
     fi
 
-    local CONFIG_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/config.sql"
-    if [[ -f "$CONFIG_SQL" && "$TIPO_AMBIENTE" != "pln" ]]; then
-        log "⚙️ Executando scripts de configuração em '$target_db'..."
-        if execute_sql_file "$CONFIG_SQL" "$target_db"; then
-            log_success "Scripts de configuração aplicados"
+    local CONFIG_SQL=""
+    if [[ "$TIPO_AMBIENTE" != "pln" ]]; then
+        local servidor_lower
+        servidor_lower=$(echo "$SERVIDOR" | tr '[:upper:]' '[:lower:]')
+        case "$servidor_lower" in
+            oci-db-qa)
+                CONFIG_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/config-qa.sql"
+                ;;
+            oci-db-imp)
+                CONFIG_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/config-imp.sql"
+                ;;
+            oci-db-02)
+                CONFIG_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/config-prod.sql"
+                ;;
+            *)
+                CONFIG_SQL="$WORKSPACE/sql/$TIPO_AMBIENTE/config.sql"
+                ;;
+        esac
+        if [[ -f "$CONFIG_SQL" ]]; then
+            log "⚙️ Executando scripts de configuração em '$target_db' ($(basename "$CONFIG_SQL"))..."
+            if execute_sql_file "$CONFIG_SQL" "$target_db"; then
+                log_success "Scripts de configuração aplicados"
+            else
+                log_error "Falha ao aplicar configuração"
+                return 1
+            fi
         else
-            log_error "Falha ao aplicar configuração"
-            return 1
+            log_warning "Arquivo de configuração não encontrado: $CONFIG_SQL"
         fi
     fi
 
