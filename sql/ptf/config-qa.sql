@@ -5,7 +5,7 @@ update configuracao set valor_texto = 'https://geocode.search.hereapi.com/v1/geo
 update configuracao set valor_texto='cHRmX2tldHRsZTpwdGZAazN0dGwz' where nomecampo='kettle-key';
 update parametro set valor = '/opt/kettle-ext/importacao/uploads' where chave = 'Kettle-Caminho Destino';
 update parametro set valor = '/opt/kettle-ext/importacao/modelos_ktr' where chave = 'Kettle-Caminho Modelo';
-update parametro set valor='http://10.0.16.17:8040/kettle' where chave ='Kettle-URL';
+update parametro set valor='http://10.0.0.48:8040/kettle' where chave ='Kettle-URL';
 update parametro set valor=(select current_database()) where chave ='Nome Banco de Dados';
 update parametro set valor='5432' where chave ='Porta do Servidor Banco de Dados';
 update parametro set valor = '10.0.2.143' where chave = 'Servidor Banco de Dados';
