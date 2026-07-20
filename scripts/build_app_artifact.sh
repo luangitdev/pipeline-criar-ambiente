@@ -91,8 +91,15 @@ version_to_int() {
     local main="${ver%%-*}"
     local build="${ver##*-}"
     [[ "$ver" == *"-"* ]] || build=0
+    # O build pode ser decimal (ex: "53.5" vindo de application.minorVersion).
+    # Tratamos sempre como string e só extraímos as partes numéricas aqui —
+    # nunca aplicamos printf "%d" sobre o valor bruto, pois isso quebra com
+    # "printf: 53.5: invalid number".
+    local build_major="${build%%.*}"
+    local build_minor="0"
+    [[ "$build" == *.* ]] && build_minor="${build#*.}"
     IFS='.' read -r a b c d <<< "$main"
-    printf '%d%04d%04d%04d%06d' "${a:-0}" "${b:-0}" "${c:-0}" "${d:-0}" "${build:-0}"
+    printf '%d%04d%04d%04d%06d%04d' "${a:-0}" "${b:-0}" "${c:-0}" "${d:-0}" "${build_major:-0}" "${build_minor:-0}"
 }
 
 # Normaliza versão para comparação canônica (remove prefixo v. ou v)
@@ -104,12 +111,46 @@ normalize_version() {
 }
 
 # ---------------------------------------------------------------------------
+# Caminho do arquivo de versão dentro do repositório da aplicação. Usado como
+# fonte alternativa quando a versão de build é decimal (ex: "53.5"), formato
+# que normalmente não aparece nos títulos de commit.
+# ---------------------------------------------------------------------------
+VERSION_PROPERTIES_PATH="src/main/resources/version.properties"
+
+# ---------------------------------------------------------------------------
+# Extrai "application.version-application.minorVersion" de um conteúdo de
+# version.properties. Ignora comentários e espaços. Sempre retorna string
+# (minorVersion pode ser decimal, ex "53.5" — nunca é tratado como número).
+# ---------------------------------------------------------------------------
+read_version_from_properties() {
+    local content="$1"
+    local version minor_version
+    version="$(printf '%s\n' "$content" \
+        | grep -E '^[[:space:]]*application\.version[[:space:]]*=' \
+        | head -1 \
+        | sed -E 's/^[[:space:]]*application\.version[[:space:]]*=[[:space:]]*//; s/[[:space:]]*(#.*)?$//')"
+    minor_version="$(printf '%s\n' "$content" \
+        | grep -E '^[[:space:]]*application\.minorVersion[[:space:]]*=' \
+        | head -1 \
+        | sed -E 's/^[[:space:]]*application\.minorVersion[[:space:]]*=[[:space:]]*//; s/[[:space:]]*(#.*)?$//')"
+    if [[ -n "$version" && -n "$minor_version" ]]; then
+        printf '%s-%s' "$version" "$minor_version"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Busca o commit cujo título contém a versão desejada na branch clonada
 # Suporta formatos: 15.14.0.1-10  /  v15.14.0.1-10  /  v.15.14.0.1-10
+#
+# Ordem de precedência (compatibilidade retroativa):
+#   1) Título do commit (comportamento histórico do script)
+#   2) src/main/resources/version.properties do commit (fallback — cobre
+#      versões de build decimais, ex "53.5", que não aparecem em títulos)
 # ---------------------------------------------------------------------------
 log "🔍 Buscando versão '${APP_VERSION}' nos títulos de commits da branch '${REPO_BRANCH}'..."
 
 APP_VERSION_NORM="$(normalize_version "$APP_VERSION")"
+found_source=""
 
 # Carrega todos os commits: hash + título completo
 mapfile -t all_commits < <(
@@ -137,14 +178,37 @@ for entry in "${all_commits[@]}"; do
         if echo "$commit_msg" | grep -qF "$candidate"; then
             found_commit="$commit_hash"
             found_version="$candidate"
+            found_source="commit-title"
             break 2
         fi
     done
 done
 
+# Fallback: versão não encontrada em nenhum título de commit — provavelmente
+# uma versão de build decimal (ex: "53.5"). Procura o valor equivalente em
+# application.version + application.minorVersion dentro de version.properties,
+# lendo o conteúdo de cada commit sem checkout (git show).
+if [[ -z "$found_commit" ]]; then
+    log_warning "⚠️  Versão '${APP_VERSION}' não encontrada nos títulos de commits; tentando localizar via '${VERSION_PROPERTIES_PATH}'..."
+    for entry in "${all_commits[@]}"; do
+        commit_hash="${entry%% *}"
+        props_content="$(git show "${commit_hash}:${VERSION_PROPERTIES_PATH}" 2>/dev/null || true)"
+        [[ -z "$props_content" ]] && continue
+        props_version="$(read_version_from_properties "$props_content")"
+        [[ -z "$props_version" ]] && continue
+        props_version_norm="$(normalize_version "$props_version")"
+        if [[ "$props_version_norm" == "$APP_VERSION_NORM" ]]; then
+            found_commit="$commit_hash"
+            found_version="$props_version_norm"
+            found_source="version.properties"
+            break
+        fi
+    done
+fi
+
 if [[ -n "$found_commit" ]]; then
     commit_title="$(git log -1 --format='%s' "$found_commit")"
-    log "✅ Versão '${APP_VERSION}' encontrada no commit: ${found_commit:0:12} — \"${commit_title}\""
+    log "✅ Versão '${APP_VERSION}' encontrada no commit: ${found_commit:0:12} — \"${commit_title}\" (fonte: ${found_source})"
 
     # Verifica se o commit foi diretamente na branch ou via merge
     # git log --ancestry-path encontra o caminho mais curto até o commit
@@ -161,9 +225,9 @@ if [[ -n "$found_commit" ]]; then
     fi
 
     git checkout -q "$found_commit"
-    resolved_ref="commit-by-version:${found_commit:0:12}(${found_version})"
+    resolved_ref="commit-by-version:${found_commit:0:12}(${found_version})[${found_source}]"
 else
-    log_error "❌ Versão '${APP_VERSION}' não encontrada nos títulos de commits da branch '${REPO_BRANCH}'."
+    log_error "❌ Versão '${APP_VERSION}' não encontrada nos títulos de commits nem em '${VERSION_PROPERTIES_PATH}' da branch '${REPO_BRANCH}'."
 
     # -------------------------------------------------------------------
     # Sugestão: versão mais próxima (anterior e posterior) encontrada
