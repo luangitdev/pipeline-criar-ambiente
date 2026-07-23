@@ -38,8 +38,11 @@ case "$SERVIDOR" in
     "oci-db-qa")
         echo "167.126.30.109"
         ;;
+    "oci-db-02")
+        echo "204.216.178.119"
+        ;;
     *)
-        echo "❌ Servidor desconhecido: $SERVIDOR (esperado: gcp01, gcp02, gcp03, gcp-pln, oci-pln-qa, oci-db-imp ou oci-db-qa)" >&2
+        echo "❌ Servidor desconhecido: $SERVIDOR (esperado: gcp01, gcp02, gcp03, gcp-pln, oci-pln-qa, oci-db-imp, oci-db-qa ou oci-db-02)" >&2
         exit 1
         ;;
 esac

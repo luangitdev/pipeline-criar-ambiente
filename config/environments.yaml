@@ -68,6 +68,13 @@ servers:
     environments: ["pln", "ptf"]
     provider: "oci"
 
+  oci-db-02:
+    name: "OCI DB 02"
+    host: "204.216.178.119"
+    description: "Servidor de banco de dados OCI para ambiente PTF"
+    environments: ["ptf"]
+    provider: "oci"
+
   oci-ptf-qa:
     name: "OCI PTF QA Deploy"
     host: "134.65.30.12"

@@ -106,7 +106,7 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                                     if (TIPO_AMBIENTE == "PLN") {
                                         return ["GCP-PLN", "OCI-DB-QA"]
                                     } else {
-                                        return ["GCP01", "GCP02", "GCP03", "OCI-DB-IMP", "OCI-DB-QA"]
+                                        return ["GCP01", "GCP02", "GCP03", "OCI-DB-IMP", "OCI-DB-QA", "OCI-DB-02"]
                                     }
                                 ''']
                             ]
@@ -470,7 +470,8 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                     // Mapeamento de IP interno por servidor (usado no jdbcurl do login.properties)
                     def dbInternalHostMap = [
                         'oci-db-qa'  : '10.0.2.143',
-                        'oci-db-imp' : '10.0.1.245'
+                        'oci-db-imp' : '10.0.1.245',
+                        'oci-db-02'  : '10.0.1.21'
                     ]
                     env.DB_INTERNAL_HOST = dbInternalHostMap.get(params.SERVIDOR.toLowerCase(), env.DB_HOST)
 
@@ -478,6 +479,7 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                     def deployDbCredsByServer = [
                         'oci-db-qa'  : [user: 'ociadm', password: 'Mobiis@path#2026'],
                         'oci-db-imp' : [user: 'ociadm', password: 'Mobi!sfor#2027%'],
+                        'oci-db-02'  : [user: 'ociadm', password: 'T8q#6m%74dZj'],
                     ]
                     def deployDbCreds = deployDbCredsByServer.get(params.SERVIDOR.toLowerCase(), [user: 'pathfinddb', password: 'Find**(path)$DB'])
                     env.DEPLOY_DB_USER     = deployDbCreds.user
@@ -609,12 +611,14 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                         string(credentialsId: 'db-pathfind-user-oci', variable: 'DB_USER_OCI'),
                         string(credentialsId: 'db-pathfind-password-oci-db-qa', variable: 'DB_PASSWORD_OCI_DB_QA'),
                         string(credentialsId: 'db-pathfind-password-oci-db-imp', variable: 'DB_PASSWORD_OCI_DB_IMP'),
+                        string(credentialsId: 'db-pathfind-password-oci-db-02', variable: 'DB_PASSWORD_OCI_DB_02'),
                         sshUserPrivateKey(credentialsId: 'SSH_PRIVATE_KEY', keyFileVariable: 'SSH_KEY', passphraseVariable: 'SSH_PASSPHRASE')
                     ]) {
                         def servidorLower = params.SERVIDOR.toLowerCase()
                         def ociPasswordMap = [
                             'oci-db-qa'  : env.DB_PASSWORD_OCI_DB_QA,
-                            'oci-db-imp' : env.DB_PASSWORD_OCI_DB_IMP
+                            'oci-db-imp' : env.DB_PASSWORD_OCI_DB_IMP,
+                            'oci-db-02'  : env.DB_PASSWORD_OCI_DB_02
                         ]
                         if (servidorLower.startsWith('oci-')) {
                             if (!ociPasswordMap.containsKey(servidorLower)) {
