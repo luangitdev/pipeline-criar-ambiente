@@ -485,6 +485,21 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                     env.DEPLOY_DB_USER     = deployDbCreds.user
                     env.DEPLOY_DB_PASSWORD = deployDbCreds.password
 
+                    // Configuração de template por servidor (host, credenciais, nome)
+                    def templateConfigMap = [
+                        'oci-db-02': [
+                            host       : '204.216.191.1',
+                            serverName : 'OCI-DB-IMP',
+                            user       : 'ociadm',
+                            password   : 'Mobi!sfor#2027%'
+                        ]
+                    ]
+                    def templateConfig = templateConfigMap.get(params.SERVIDOR.toLowerCase(), [:])
+                    env.TEMPLATE_HOST_OVERRIDE       = templateConfig.host ?: ""
+                    env.TEMPLATE_SERVER_NAME_OVERRIDE = templateConfig.serverName ?: ""
+                    env.TEMPLATE_DB_USER            = templateConfig.user ?: ""
+                    env.TEMPLATE_DB_PASSWORD        = templateConfig.password ?: ""
+
                     def appRepoDefaults = [
                         'PTF': [url: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Roteirizador/_git/pathfind', branch: 'mvp'],
                         'PLN': [url: 'https://MobiisLogistica@dev.azure.com/MobiisLogistica/Planner%20e%20Torre/_git/planner', branch: 'v8']
@@ -673,6 +688,12 @@ echo "DB_PASSWORD: [MASKED]"
 echo "WORKSPACE: /tmp/pipeline-${BUILD_NUMBER}"
 echo "UPDATES_DIR: /tmp/pipeline-${BUILD_NUMBER}/temp/sql_updates/${params.TIPO_AMBIENTE.toLowerCase()}/updates"
 echo "================================="
+
+# Exportar configurações de template (permitem override por servidor)
+export TEMPLATE_HOST_OVERRIDE="${env.TEMPLATE_HOST_OVERRIDE}"
+export TEMPLATE_SERVER_NAME_OVERRIDE="${env.TEMPLATE_SERVER_NAME_OVERRIDE}"
+export TEMPLATE_DB_USER="${env.TEMPLATE_DB_USER}"
+export TEMPLATE_DB_PASSWORD="${env.TEMPLATE_DB_PASSWORD}"
 
 # Executar criação do banco
 ./scripts/create_database.sh \\

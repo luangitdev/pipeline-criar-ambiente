@@ -18,8 +18,11 @@ DB_INTERNAL_HOST=""
 DB_PORT="5432"
 DB_USER=""
 DB_PASSWORD=""
-TEMPLATE_DB_USER=""
-TEMPLATE_DB_PASSWORD=""
+TEMPLATE_DB_USER="${TEMPLATE_DB_USER:-}"
+TEMPLATE_DB_PASSWORD="${TEMPLATE_DB_PASSWORD:-}"
+TEMPLATE_HOST_OVERRIDE="${TEMPLATE_HOST_OVERRIDE:-}"
+TEMPLATE_PORT_OVERRIDE="${TEMPLATE_PORT_OVERRIDE:-}"
+TEMPLATE_SERVER_NAME_OVERRIDE="${TEMPLATE_SERVER_NAME_OVERRIDE:-}"
 WORKSPACE=""
 UPDATES_DIR_OVERRIDE=""
 ALLOW_EXISTING_DB="${ALLOW_EXISTING_DB:-false}"
@@ -79,6 +82,18 @@ while [[ $# -gt 0 ]]; do
             ;;
         --bancos-filiais-file)
             BANCOS_FILIAIS_FILE="$2"
+            shift 2
+            ;;
+        --template-host)
+            TEMPLATE_HOST_OVERRIDE="$2"
+            shift 2
+            ;;
+        --template-port)
+            TEMPLATE_PORT_OVERRIDE="$2"
+            shift 2
+            ;;
+        --template-server-name)
+            TEMPLATE_SERVER_NAME_OVERRIDE="$2"
             shift 2
             ;;
         --template-db-user)
@@ -142,6 +157,18 @@ extract_version_token() {
 run_psql_safe() {
     local password_decoded=$(echo "$DB_PASSWORD_ENCODED" | base64 -d)
     PGPASSWORD="$password_decoded" "$@"
+}
+
+# Função para executar psql no servidor de template (permite credenciais diferentes)
+run_psql_template_safe() {
+    local tpl_password_decoded
+    if [[ -n "$TEMPLATE_DB_PASSWORD" ]]; then
+        tpl_password_decoded="$TEMPLATE_DB_PASSWORD"
+    else
+        tpl_password_decoded=$(echo "$DB_PASSWORD_ENCODED" | base64 -d)
+    fi
+    local tpl_user="${TEMPLATE_DB_USER:-$DB_USER}"
+    PGPASSWORD="$tpl_password_decoded" PGUSER="$tpl_user" "$@"
 }
 
 # Aplica start.sql, config.sql, updates e credentials em um banco.
@@ -315,18 +342,29 @@ EFFECTIVE_PORT="$DB_PORT"
 TUNNEL_PID=""
 
 # Template: OCI usa OCI-DB-IMP, GCP usa GCP01 (PTF) ou GCP-PLN (PLN)
+# Permite override via CLI ou variável de ambiente
 SERVIDOR_LOWER="${SERVIDOR,,}"
-if [[ "$SERVIDOR_LOWER" == oci-* ]]; then
+if [[ -n "$TEMPLATE_HOST_OVERRIDE" ]]; then
+    TEMPLATE_HOST="$TEMPLATE_HOST_OVERRIDE"
+elif [[ "$SERVIDOR_LOWER" == oci-* ]]; then
     TEMPLATE_HOST="204.216.191.1"  # OCI-DB-IMP
-    TEMPLATE_SERVER_NAME="OCI-DB-IMP"
 elif [[ "$TIPO_AMBIENTE" == "pln" ]]; then
     TEMPLATE_HOST="10.200.0.3"     # GCP-PLN
-    TEMPLATE_SERVER_NAME="GCP-PLN"
 else
     TEMPLATE_HOST="10.200.0.19"    # GCP01
+fi
+
+if [[ -n "$TEMPLATE_SERVER_NAME_OVERRIDE" ]]; then
+    TEMPLATE_SERVER_NAME="$TEMPLATE_SERVER_NAME_OVERRIDE"
+elif [[ "$SERVIDOR_LOWER" == oci-* ]]; then
+    TEMPLATE_SERVER_NAME="OCI-DB-IMP"
+elif [[ "$TIPO_AMBIENTE" == "pln" ]]; then
+    TEMPLATE_SERVER_NAME="GCP-PLN"
+else
     TEMPLATE_SERVER_NAME="GCP01"
 fi
-TEMPLATE_PORT="5432"
+
+TEMPLATE_PORT="${TEMPLATE_PORT_OVERRIDE:-5432}"
 
 log "🔗 Template: $TEMPLATE_HOST:$TEMPLATE_PORT ($TEMPLATE_SERVER_NAME) → destino: $EFFECTIVE_HOST:$EFFECTIVE_PORT"
 
@@ -352,7 +390,7 @@ log_success "Conexão com o servidor estabelecida com sucesso!"
 
 # 2. Verificar se template existe no servidor de template
 log "🔍 Verificando se template existe no $TEMPLATE_SERVER_NAME: $TEMPLATE_DB"
-if ! run_psql_safe psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
+if ! run_psql_template_safe psql -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "${TEMPLATE_DB_USER:-$DB_USER}" -d "$TEMPLATE_DB" -c "SELECT 1;" &>/dev/null; then
     log_error "Template '$TEMPLATE_DB' não encontrado ou sem acesso em $TEMPLATE_HOST:$TEMPLATE_PORT ($TEMPLATE_SERVER_NAME, usuário: $DB_USER)"
     exit 1
 fi
@@ -390,7 +428,7 @@ else
     
     # Fazer dump do template no servidor de origem
     log "📤 Fazendo dump do template..."
-    if ! run_psql_safe pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
+    if ! run_psql_template_safe pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "${TEMPLATE_DB_USER:-$DB_USER}" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
         log_error "Falha ao fazer dump do template $TEMPLATE_DB"
         rm -f "$DUMP_FILE"
         exit 1
@@ -514,7 +552,7 @@ if [[ "$MULTIBANCO" == "true" ]]; then
 
             local DUMP_FILE="/tmp/template_dump_filial_$$.sql"
             log "[MULTIBANCO] 📤 Dump do template..."
-            if ! run_psql_safe pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "$DB_USER" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
+    if ! run_psql_template_safe pg_dump -h "$TEMPLATE_HOST" -p "$TEMPLATE_PORT" -U "${TEMPLATE_DB_USER:-$DB_USER}" -d "$TEMPLATE_DB" > "$DUMP_FILE"; then
                 log_error "[MULTIBANCO] Falha no dump do template"
                 rm -f "$DUMP_FILE" "$filial_dados"
                 return 1
