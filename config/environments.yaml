@@ -77,6 +77,15 @@ servers:
     server_type: "deploy"
     provider: "oci"
 
+  oci-ptf-prod-01:
+    name: "OCI PTF PROD 01 Deploy"
+    host: "167.126.9.6"
+    description: "Servidor de deploy OCI para ambiente PTF PROD"
+    environments: ["ptf"]
+    ssh_user: "infra"
+    server_type: "deploy"
+    provider: "oci"
+
   local01:
     name: "Local Development"
     host: "localhost"

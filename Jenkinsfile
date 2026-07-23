@@ -191,6 +191,7 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                                     } else {
                                         return [
                                             "OCI-PTF-QA:134.65.30.12",
+                                            "OCI-PTF-PROD-01:167.126.9.6",
                                             "OCI-IMP-01:157.151.5.126",
                                             "IMP-01:34.95.251.169",
                                             "PROD-01:35.247.243.102",
