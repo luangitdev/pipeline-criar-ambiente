@@ -175,7 +175,8 @@ for entry in "${all_commits[@]}"; do
     commit_hash="${entry%% *}"
     commit_msg="${entry#* }"
     for candidate in "$APP_VERSION_NORM" "v${APP_VERSION_NORM}" "v.${APP_VERSION_NORM}"; do
-        if echo "$commit_msg" | grep -qF "$candidate"; then
+        candidate_pattern="${candidate//./\\.}"
+        if printf '%s\n' "$commit_msg" | grep -qE "(^|[^[:alnum:]])${candidate_pattern}([^[:alnum:]]|$)"; then
             found_commit="$commit_hash"
             found_version="$candidate"
             found_source="commit-title"
