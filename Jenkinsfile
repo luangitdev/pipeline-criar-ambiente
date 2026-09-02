@@ -272,7 +272,7 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                     echo "   - Versão App: ${params.VERSAO_APP}"
                     echo "   - Criar Banco: ${params.CRIAR_BANCO}"
                     echo "   - Multibanco: ${params.MULTIBANCO}"
-                    if (params.MULTIBANCO?.toString()?.trim() == 'true') {
+                    if (params.MULTIBANCO?.toString()?.trim()?.replaceAll('[,;\\s]', '') == 'true') {
                         echo "   - Bancos Filiais: ${params.BANCOS_FILIAIS}"
                     }
                     echo "   - Deploy App: ${params.DEPLOY_APP}"
@@ -337,7 +337,7 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                         error("❌ VERSAO_BANCO é obrigatória quando CRIAR_BANCO=true.")
                     }
 
-                    if (params.MULTIBANCO?.toString()?.trim() == 'true') {
+                    if (env.MULTIBANCO_CLEAN == 'true') {
                         if (!params.BANCOS_FILIAIS || params.BANCOS_FILIAIS.trim() == '') {
                             error("❌ BANCOS_FILIAIS é obrigatório quando MULTIBANCO=true.")
                         }
@@ -552,7 +552,7 @@ Razao Social: MAGNUS - FILIAL RJ\'></textarea>"""
                     }
 
                     // Escrever lista de bancos filiais para arquivo (evita problemas com newlines em heredoc SSH)
-                    if (params.MULTIBANCO?.toString()?.trim() == 'true') {
+                    if (env.MULTIBANCO_CLEAN == 'true') {
                         writeFile file: "${WORKSPACE}/temp/bancos_filiais.txt", text: params.BANCOS_FILIAIS.replace('\\n', '\n')
                         echo "✅ Bancos filiais registrados em temp/bancos_filiais.txt"
                     }
